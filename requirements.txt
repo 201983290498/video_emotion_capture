@@ -1,0 +1,35 @@
+# Web框架
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+
+# 音视频处理
+opencv-python==4.8.1.78
+moviepy==1.0.3
+Pillow==10.0.1
+numpy==1.24.3
+ffmpeg-python==0.2.0
+
+# HTTP请求
+requests==2.31.0
+
+# 异步处理
+python-socketio==5.8.0
+eventlet==0.33.3
+
+# 数据处理
+python-dateutil==2.8.2
+
+# 开发工具
+python-dotenv==1.0.0
+
+# AI模型相关
+torch>=2.0.0
+transformers>=4.30.0
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# OpenAI API
+openai>=1.0.0
+
+# 音频处理 (wave和base64是Python内置模块)
