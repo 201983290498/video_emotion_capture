@@ -33,7 +33,7 @@ def get_args(description='Multi-modal Multi-label Emotion Recognition'):
                             help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument('--num_thread_reader', type=int, default=1, help='') 
     parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
-    parser.add_argument('--epochs', type=int, default=5, help='upper epoch limit') 
+    parser.add_argument('--epochs', type=int, default=20, help='upper epoch limit') 
     parser.add_argument('--unaligned_data_path', type=str, default='/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl', help='load unaligned dataset')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size for single GPU')
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help='Number of updates steps to accumulate before performing a backward/update pass')
