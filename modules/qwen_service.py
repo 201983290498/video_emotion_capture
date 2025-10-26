@@ -43,7 +43,7 @@ class QwenModelService:
     
     def load_model(self, model_path: str, device: str = "auto", max_gpus: int = 4) -> bool:
         """
-        加载Qwen3-Omni模型
+        加载并缓存Qwen3-Omni模型实例
         Args:
             model_path: 模型路径
             device: 设备类型
@@ -122,7 +122,7 @@ class QwenModelService:
         
         try:
             logger.info(f"开始分析视频情感: {video_path}")
-            result = self.model.analyze_video_emotion(
+            result = self.model.analyze_video_emotion(   # 为什么是调用自己？
                 video_path=video_path,
                 audio_path=audio_path,
                 prompt=prompt
@@ -165,7 +165,7 @@ class QwenModelService:
         
         try:
             logger.info(f"开始分析音频情感: {audio_path}")
-            result = self.model.analyze_audio_emotion(
+            result = self.model.analyze_audio_emotion(       # 为什么是调用自己？
                 audio_path=audio_path,
                 prompt=prompt
             )

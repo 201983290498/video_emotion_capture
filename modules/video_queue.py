@@ -47,7 +47,7 @@ class VideoQueue:
     
     def get_recent_data(self, duration: float = 5.0) -> Tuple[List, List]:
         """
-        获取最近指定时长的数据
+        获取最近指定时长的数据  默认是5s用于合成与分析
         Args:
             duration: 获取数据的时长（秒）
         Returns:

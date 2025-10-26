@@ -1,0 +1,5 @@
+*.mp4
+*.pyc
+.env
+.env.example
+dataset/dataset1

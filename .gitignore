@@ -2,3 +2,6 @@
 *.pyc
 .env
 .env.example
+*.csv
+*.pkl
+dataset/dataset1

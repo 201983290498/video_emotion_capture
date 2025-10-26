@@ -1,0 +1,12 @@
+python train.py \
+    --lr 0.0002 \
+    --cml 0.3 \
+    --kll 0 \
+    --cdl 1 \
+    --rel 0 \
+    --crl 0.3 \
+    --epochs 30 \
+    --batch_size 64 \
+    --device cuda:1 \
+    --output_dir ./experience/late_fusion_2 \
+    --data_path ./dataset/dataset1/aligned_501.pkl

@@ -136,7 +136,8 @@ video_capture/
 - `GET /api/chat/history`：查询聊天历史
 - `GET /status`：系统/会话状态
 - `GET /api/qwen/status`：Qwen 模型服务状态
-- `POST /api/qwen/analyze`：视频情感分析
+- `POST /api/qwen/analyze`：视频情感分析（Qwen路径）
+- `POST /api/lddu/analyze`：视频情感分析（LDDU路径，优先使用）
 
 ### SocketIO 事件
 - `connect` / `disconnect`
@@ -144,6 +145,14 @@ video_capture/
 - `video_frame`：接收帧，后端回 `video_frame_ack{server_ts, client_ts, queue_info}`
 - `audio_chunk`：接收音频块（自动清理前缀与填充）
 - `get_session_status` → `session_status`
+- `emotion_result`：后端推送情感结果到前端（载荷含 `emotion`, `video_name`, `timestamp`）
+
+### 情感识别流程
+1. 前端每 ~100ms 发送一帧 JPEG（DataURL）与音频数据到后端（`video_frame`/`audio_chunk`）。
+2. 后端 `VideoQueue` 缓存最近 10 秒数据，`RealtimeManager` 每秒取最近 5 秒提交 `VideoProcessor` 合成短视频（保存到 `videos/`）。
+3. 合成完成后触发情感分析：优先调用 `LDDUService.analyze_video_emotion`，若不可用则回退到 `QwenService.analyze_video_emotion`。
+4. 后端通过 `emotion_callbacks` 将统一载荷推到前端房间：`{ emotion: '<标签>', video_name: '实时分析', timestamp: <ts> }`。
+5. 前端 `initializeSocket` 监听 `emotion_result`，使用 `displayEmotionResult` 渲染：标题为“实时分析”，正文仅显示情感标签（不含置信度）。
 
 ## 核心功能实现
 

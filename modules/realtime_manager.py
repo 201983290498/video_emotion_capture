@@ -5,10 +5,14 @@
 import time
 import threading
 import logging
+import statistics
+import json
+from collections import deque
 from typing import Dict, Any, Optional, Callable
 from .video_queue import VideoQueueManager
 from .video_processor import VideoProcessor
 from .qwen_service import get_qwen_service
+from .lddu_service import get_lddu_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,11 @@ class RealtimeManager:
         # 获取Qwen模型服务
         self.qwen_service = get_qwen_service()
         
-        # 初始化本地模型
+        # 获取 LDDU 服务
+        self.lddu_service = get_lddu_service()
+        self.lddu_ready = False
+        
+        # 初始化本地Qwen模型
         model_path = config.get('qwen_model_path')
         if model_path:
             try:
@@ -50,10 +58,39 @@ class RealtimeManager:
         else:
             logger.warning("未配置本地模型路径")
         
+        # 初始化 LDDU 服务
+        try:
+            self.lddu_ready = self.lddu_service.load_model(
+                humanomni_model_path=config.get('humanomni_model_path'),
+                model_dir=config.get('lddu_model_dir'),
+                init_model_path=config.get('lddu_init_checkpoint'),
+                emotion_labels=config.get('emotion_labels')
+            )
+            if self.lddu_ready:
+                logger.info("LDDU Service 初始化成功")
+            else:
+                logger.error(f"LDDU Service 初始化失败: {self.lddu_service.load_error}")
+        except Exception as e:
+            logger.error(f"LDDU Service 初始化异常: {e}")
+        
         # 实时处理控制
         self.processing_threads: Dict[str, threading.Thread] = {}
         self.processing_flags: Dict[str, bool] = {}
         self.emotion_callbacks: Dict[str, Callable] = {}
+        
+        # 推理时间统计 (保留最近100次记录)
+        self.inference_times = {
+            'lddu': deque(maxlen=100),
+            'qwen': deque(maxlen=100)
+        }
+        self.inference_stats = {
+            'lddu': {'count': 0, 'total_time': 0, 'avg_time': 0, 'min_time': float('inf'), 'max_time': 0},
+            'qwen': {'count': 0, 'total_time': 0, 'avg_time': 0, 'min_time': float('inf'), 'max_time': 0}
+        }
+        self.stats_lock = threading.Lock()
+        # 推理日志文件路径与写入锁
+        self.inference_log_file = config.get('inference_log_file')
+        self.log_lock = threading.Lock()
         
         # 启动视频处理器
         self.video_processor.start_worker()
@@ -84,6 +121,46 @@ class RealtimeManager:
         
         logger.info(f"开始实时处理: session_id={session_id}")
     
+    def _update_inference_stats(self, model_type: str, inference_time: float):
+        """更新推理时间统计"""
+        with self.stats_lock:
+            # 添加到时间队列
+            self.inference_times[model_type].append(inference_time)
+            
+            # 更新统计信息
+            stats = self.inference_stats[model_type]
+            stats['count'] += 1
+            stats['total_time'] += inference_time
+            stats['avg_time'] = stats['total_time'] / stats['count']
+            stats['min_time'] = min(stats['min_time'], inference_time)
+            stats['max_time'] = max(stats['max_time'], inference_time)
+        
+        # 追加写入NDJSON日志（不阻塞统计锁）
+        self._append_inference_log(model_type, inference_time, stats)
+    
+    def get_inference_stats(self) -> Dict[str, Any]:
+        """获取推理时间统计"""
+        with self.stats_lock:
+            stats = {}
+            for model_type in ['lddu', 'qwen']:
+                recent_times = list(self.inference_times[model_type])
+                model_stats = self.inference_stats[model_type].copy()
+                
+                if recent_times:
+                    model_stats['recent_avg'] = statistics.mean(recent_times)
+                    model_stats['recent_std'] = statistics.stdev(recent_times) if len(recent_times) > 1 else 0
+                    model_stats['recent_count'] = len(recent_times)
+                    model_stats['fps'] = 1.0 / model_stats['recent_avg'] if model_stats['recent_avg'] > 0 else 0
+                else:
+                    model_stats['recent_avg'] = 0
+                    model_stats['recent_std'] = 0
+                    model_stats['recent_count'] = 0
+                    model_stats['fps'] = 0
+                
+                stats[model_type] = model_stats
+            
+            return stats
+    
     def stop_realtime_processing(self, session_id: str):
         """停止实时处理"""
         if session_id in self.processing_flags:
@@ -103,8 +180,8 @@ class RealtimeManager:
         logger.info(f"停止实时处理: session_id={session_id}")
     
     def _realtime_processing_loop(self, session_id: str):
-        """实时处理主循环"""
-        logger.info(f"实时处理循环开始: session_id={session_id}")
+        """实时处理主循环 - 每5秒合成一次视频进行情感分析"""
+        logger.info(f"实时处理循环开始: session_id={session_id} (每5秒合成一次)")
         
         # 等待5秒让队列积累数据
         time.sleep(5)
@@ -126,14 +203,15 @@ class RealtimeManager:
                         callback=lambda result: self._on_video_composed(session_id, result)
                     )
                     
-                    logger.debug(f"添加视频合成任务: session_id={session_id}, frames={len(video_frames)}")
+                    # 减少日志输出，只在debug模式下显示详细信息
+                    logger.debug(f"合成5秒视频片段: session_id={session_id}, frames={len(video_frames)}")
                 
-                # 每秒处理一次
-                time.sleep(1)
+                # 每5秒处理一次，平衡实时性和性能
+                time.sleep(5)
                 
             except Exception as e:
                 logger.error(f"实时处理循环错误: {e}")
-                time.sleep(1)
+                time.sleep(5)  # 错误时也等待5秒
         
         logger.info(f"实时处理循环结束: session_id={session_id}")
     
@@ -147,26 +225,49 @@ class RealtimeManager:
         if not video_path:
             return
         
-        # 进行情感分析
-        if self.qwen_service.is_model_ready():
+        # 进行情感分析，优先使用 LDDU
+        if self.lddu_service and self.lddu_service.is_loaded:
+            self._analyze_emotion_async_lddu(session_id, video_path)
+        elif self.qwen_service.is_model_ready():
             self._analyze_emotion_async(session_id, video_path)
         else:
-            logger.warning("Qwen模型服务未准备就绪，跳过情感分析")
+            logger.warning("没有可用的情感分析服务，跳过")
     
     def _analyze_emotion_async(self, session_id: str, video_path: str):
-        """异步情感分析"""
+        """异步情感分析(Qwen)"""
         def analyze():
             try:
+                # 记录开始时间
+                start_time = time.time()
+                
                 result = self.qwen_service.analyze_video_emotion(video_path)
                 
-                # 调用回调函数
+                # 记录结束时间并更新统计
+                end_time = time.time()
+                inference_time = end_time - start_time
+                self._update_inference_stats('qwen', inference_time)
+                
+                logger.info(f"Qwen情感分析耗时: {inference_time:.3f}s")
+                
+                # 调用回调函数，简化返回结构
                 callback = self.emotion_callbacks.get(session_id)
                 if callback:
+                    # 提取情感结果，统一格式
+                    emotion_text = "未检测到情感"
+                    if result and isinstance(result, dict):
+                        if result.get('emotion'):
+                            emotion_text = result['emotion']
+                        elif result.get('analysis'):
+                            emotion_text = result['analysis']
+                    elif isinstance(result, str):
+                        emotion_text = result
+                    
                     callback({
-                        'session_id': session_id,
-                        'video_path': video_path,
-                        'emotion_result': result,
-                        'timestamp': time.time()
+                        'emotion': emotion_text,
+                        'timestamp': time.time(),
+                        'video_name': "实时分析",
+                        'inference_time': inference_time,
+                        'model_type': 'qwen'
                     })
                 
             except Exception as e:
@@ -175,6 +276,41 @@ class RealtimeManager:
         # 在新线程中执行情感分析
         thread = threading.Thread(target=analyze, daemon=True)
         thread.start()
+    
+    def _analyze_emotion_async_lddu(self, session_id: str, video_path: str):
+        """异步情感分析(LDDU)"""
+        def analyze():
+            try:
+                # 记录开始时间
+                start_time = time.time()
+                
+                # 使用默认阈值进行分析，返回完整结果结构
+                result = self.lddu_service.analyze_video_emotion(video_path)
+                
+                # 记录结束时间并更新统计
+                end_time = time.time()
+                inference_time = end_time - start_time
+                self._update_inference_stats('lddu', inference_time)
+                
+                logger.info(f"LDDU情感分析耗时: {inference_time:.3f}s")
+                
+                callback = self.emotion_callbacks.get(session_id)
+                if callback:
+                    # 提取情感结果，仅返回标签
+                    emotion_text = "未检测到情感"
+                    if result and result.get('success') and result.get('emotion'):
+                        emotion_text = result['emotion']
+                    
+                    callback({
+                        'emotion': emotion_text,
+                        'timestamp': time.time(),
+                        'video_name': "实时分析",
+                        'inference_time': inference_time,
+                        'model_type': 'lddu'
+                    })
+            except Exception as e:
+                logger.error(f"LDDU 情感分析失败: {e}")
+        threading.Thread(target=analyze, daemon=True).start()
     
     def add_video_frame(self, session_id: str, frame_data):
         """添加视频帧"""
@@ -195,7 +331,7 @@ class RealtimeManager:
             'session_id': session_id,
             'is_processing': self.processing_flags.get(session_id, False),
             'queue_info': queue_info,
-            'has_emotion_analyzer': self.emotion_analyzer is not None
+            'has_emotion_analyzer': True
         }
     
     def get_all_sessions_status(self) -> Dict[str, Any]:
@@ -233,3 +369,26 @@ class RealtimeManager:
         self.video_processor.stop_worker()
         
         logger.info("实时处理管理器已关闭")
+    
+    def _append_inference_log(self, model_type: str, inference_time: float, stats: Dict[str, Any]):
+        """将一次推理记录写入NDJSON日志文件"""
+        if not self.inference_log_file:
+            return
+        try:
+            log_item = {
+                'ts': time.time(),
+                'model': model_type,
+                'inference_time': inference_time,
+                'count': stats.get('count', 0),
+                'avg_time': stats.get('avg_time', 0),
+                'min_time': stats.get('min_time', 0),
+                'max_time': stats.get('max_time', 0),
+                'source': 'app_runtime'
+            }
+            line = json.dumps(log_item, ensure_ascii=False)
+            with self.log_lock:
+                with open(self.inference_log_file, 'a', encoding='utf-8') as f:
+                    f.write(line + "\n")
+        except Exception as e:
+            # 使用debug级别，避免影响正常运行
+            logger.debug(f"写入推理日志失败: {e}")

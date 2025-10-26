@@ -1,0 +1,5 @@
+tqdm
+requests
+opencv-python
+boto3
+sklearn

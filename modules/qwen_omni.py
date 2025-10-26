@@ -38,7 +38,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class LocalQwenOmni:
-    """本地Qwen3-Omni模型推理器"""
+    """本地Qwen3-Omni模型推理器   根据模型路径自动判定类型Qwen3-Omni或Qwen2.5-Omni"""
     
     def __init__(self, model_path: str, device: str = "auto", max_gpus: int = 4, use_vllm: bool = False):
         """
@@ -149,20 +149,31 @@ class LocalQwenOmni:
         """提取视频关键帧"""
         frames = []
         try:
-            with cv2.VideoCapture(video_path) as cap:
+            # OpenCV 的 VideoCapture 不支持上下文管理协议，不能用 with
+            cap = cv2.VideoCapture(video_path)
+            try:
                 if not cap.isOpened():
                     logger.error(f"无法打开视频文件: {video_path}")
                     return frames
                 total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                if total == 0:
+                if total <= 0:
                     return frames
                 step = max(1, total // max_frames)
-                for idx in range(0, total, step)[:max_frames]:
+                count = 0
+                for idx in range(0, total, step):
+                    if count >= max_frames:
+                        break
                     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                     ret, frame = cap.read()
                     if ret:
                         frames.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
-            logger.info(f"成功提取 {len(frames)} 个关键帧")
+                        count += 1
+                logger.info(f"成功提取 {len(frames)} 个关键帧")
+            finally:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"提取视频帧失败: {e}")
         return frames

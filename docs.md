@@ -5,7 +5,7 @@
 ![项目架构图](./static/image1.png)
 ## 项目概述
 - 基于 `Flask` 与 `Flask-SocketIO` 的实时录音录像与情感分析应用。
-- 前端通过浏览器获取摄像头与麦克风数据，后端实现音视频缓存、合成与大模型情感识别。
+- 前端通过浏览器获取摄像头与麦克风数据，后端实现音视频缓存、合成与情感识别（优先 `LDDUService`，不可用时回退 `QwenService`）。
 - 支持本地 `Qwen3-Omni` 模型推理或外部大模型 API 聊天。
 
 ## 功能清单
@@ -58,7 +58,7 @@ video_capture/
 2. 初始化 OpenAI 客户端（若配置可用）。
 3. 初始化 `RealtimeManager`：
    - 创建 `VideoQueueManager` 与 `VideoProcessor`。
-   - 根据 `Config.QWEN_MODEL_PATH` 加载本地 Qwen 模型（GPU优先）。
+   - 加载 LDDU 服务（HumanOmni + LDDU 模型），若失败则加载 Qwen 模型（GPU优先）。
 4. 启动 SocketIO 服务（`debug=False`, `use_reloader=False`，避免重复加载）。
 
 ## 核心实现详解
@@ -232,11 +232,11 @@ function startSendingFrames(){
   - 合并输出：若存在临时音频，使用 `ffmpeg` 合并为最终视频（通常 `libx264 + aac`），保存到 `videos/` 目录。
 
 ### 模型就绪检测与情感分析
-- 模型服务单例：`QwenModelService` 通过 `load_model(model_path, max_gpus)` 进行一次性加载，避免重复初始化。
-- 就绪检测：`is_model_ready()` 同时检查模型实例与必要处理器是否可用；`GET /api/qwen/status` 返回 `{ready, model_info, error}`。
-- 触发流程：`RealtimeManager` 在合成完成回调 `_on_video_composed` 中，若模型就绪则异步调用 `_analyze_emotion_async(session_id, video_path)`。
-- 分析实现：`analyze_video_emotion(video_path, audio_path=None, prompt=None)` → `LocalQwenOmni` 提取关键帧（最多 8 帧）与音频（缺省从视频中抽取），构造多模态输入，生成情感文本并解析为结构化标签与置信度。
-- 结果回推：通过 `socketio.emit('emotion_result', {...}, room=session_id)` 发送到对应前端会话。
+- 模型服务单例：`LDDUService`（HumanOmni + LDDU），若初始化失败则回退到 `QwenModelService`。
+- 就绪检测：分别检查 LDDU 或 Qwen 服务是否就绪；`GET /api/qwen/status` 返回 Qwen 状态，LDDU 在初始化成功后由日志提示。
+- 触发流程：`RealtimeManager` 在合成完成回调 `_on_video_composed` 中，优先异步调用 `_analyze_emotion_async_lddu(session_id, video_path)`，若不可用则调用 `_analyze_emotion_async`（Qwen）。
+- 分析实现（统一简化）：后端仅返回标签文本，不包含置信度：`{'emotion': '<标签>', 'video_name': '实时分析', 'timestamp': <ts>}`。
+- 结果回推：通过 `socketio.emit('emotion_result', payload, room=session_id)` 发送到对应前端会话，前端渲染仅显示标签。
 
 ## API 与事件
 

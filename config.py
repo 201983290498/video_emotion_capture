@@ -24,7 +24,7 @@ class Config:
     
     # 服务器配置
     HOST = '0.0.0.0'
-    PORT = int(os.environ.get('PORT', '5000'))
+    PORT = int(os.environ.get('PORT', '5001'))
     
     # 文件存储配置
     UPLOAD_FOLDER = 'uploads'
@@ -61,6 +61,12 @@ class Config:
     MAX_GPUS = int(os.environ.get('MAX_GPUS') or '4')  # 最大GPU数量 (0-3)
     LLM_MAX_TOKENS = 1000
     LLM_TEMPERATURE = 0.7
+
+    # LDDU + HumanOmni 配置
+    HUMANOMNI_MODEL_PATH = os.environ.get('HUMANOMNI_MODEL_PATH') or '/data/testmllm/models/R1-Omni-0.5B'
+    LDDU_MODEL_DIR = os.environ.get('LDDU_MODEL_DIR') or '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models'
+    LDDU_INIT_CHECKPOINT = os.environ.get('LDDU_INIT_CHECKPOINT') or '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/cpkt_align/pytorch_model_19.bin'
+    EMOTION_LABELS = ['Happy', 'Sad', 'Anger', 'Surprise', 'Disgust', 'Fear']
     
     # 聊天配置
     CHAT_HISTORY_LIMIT = int(os.environ.get('CHAT_HISTORY_LIMIT', '20'))  # 每个会话保留的历史消息数量
@@ -73,6 +79,9 @@ class Config:
     # 日志配置
     LOG_LEVEL = 'INFO'
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+    # 推理性能日志文件（NDJSON），支持通过环境变量覆盖
+    INFERENCE_LOG_FILE = os.environ.get('INFERENCE_LOG_FILE') or 'logs/inference_speed.ndjson'
     
     @staticmethod
     def init_app(app):
@@ -80,6 +89,10 @@ class Config:
         # 创建必要的目录
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
         os.makedirs(Config.VIDEO_FOLDER, exist_ok=True)
+        # 创建日志目录
+        log_dir = os.path.dirname(Config.INFERENCE_LOG_FILE)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
 
 
 class DevelopmentConfig(Config):

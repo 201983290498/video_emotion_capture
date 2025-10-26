@@ -10,6 +10,7 @@ from flask_socketio import SocketIO, emit
 import time
 from config import Config
 from modules import RealtimeManager, get_openai_client, initialize_openai_client, get_qwen_service
+from modules import get_lddu_service
 
 # 配置日志
 logging.basicConfig(
@@ -28,20 +29,44 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 # 全局变量
 realtime_manager = None
 openai_client = None
+lddu_service = None
+
 
 def init_realtime_manager():
     """初始化实时管理器"""
     global realtime_manager
+    global lddu_service
     
     config = {
         'video_folder': Config.VIDEO_FOLDER,
         'frame_rate': Config.FRAME_RATE,
         'qwen_model_path': getattr(Config, 'QWEN_MODEL_PATH', None),
-        'max_gpus': getattr(Config, 'MAX_GPUS', 4)
+        'max_gpus': getattr(Config, 'MAX_GPUS', 4),
+        # 新增 LDDU 配置
+        'humanomni_model_path': getattr(Config, 'HUMANOMNI_MODEL_PATH', None),
+        'lddu_model_dir': getattr(Config, 'LDDU_MODEL_DIR', None),
+        'lddu_init_checkpoint': getattr(Config, 'LDDU_INIT_CHECKPOINT', None),
+        'emotion_labels': getattr(Config, 'EMOTION_LABELS', None),
+        # 推理日志文件路径
+        'inference_log_file': getattr(Config, 'INFERENCE_LOG_FILE', None),
     }
     
     realtime_manager = RealtimeManager(config)
     logger.info("实时管理器初始化完成")
+
+    # 初始化 LDDU 服务
+    lddu_service = get_lddu_service()
+    ok = lddu_service.load_model(
+        humanomni_model_path=Config.HUMANOMNI_MODEL_PATH,
+        model_dir=Config.LDDU_MODEL_DIR,
+        init_model_path=getattr(Config, 'LDDU_INIT_CHECKPOINT', None),
+        emotion_labels=getattr(Config, 'EMOTION_LABELS', None)
+    )
+    if ok:
+        logger.info("LDDU Service 初始化成功")
+    else:
+        logger.error(f"LDDU Service 初始化失败: {lddu_service.load_error}")
+
 
 @app.route('/')
 def index():
@@ -88,13 +113,13 @@ def chat():
         if not message.strip():
             return jsonify({'error': '消息不能为空'}), 400
         
-        # 使用OpenAI客户端生成响应
+        # 使用OpenAI客户端生成响应  
         response = generate_ai_response(message, session_id)
         
         return jsonify({
-            'response': response,
+            'response': response,  # 返回对话结果
             'timestamp': time.time(),
-            'session_id': session_id,
+            'session_id': session_id,  # 会话ID
             'api_available': openai_client.is_api_available() if openai_client else False
         })
     except Exception as e:
@@ -160,7 +185,7 @@ def _get_fallback_response(message: str) -> str:
     
     # 问候语
     if any(word in message_lower for word in ['你好', 'hello', 'hi', '您好']):
-        return "您好！我是AI助手，很高兴为您服务。虽然当前AI服务不可用，但我仍然可以为您提供基本的帮助和指导。"
+        return "您好！我是AI助手，很高兴为您服务。虽然当前AI服务不可用，但我仍然可以为您提供基本的帮助和指导。"  # AI服务不可用??
     
     # 关于功能的问题
     elif any(word in message_lower for word in ['功能', '能做什么', '怎么用']):
@@ -191,7 +216,7 @@ def _get_fallback_response(message: str) -> str:
 
 @app.route('/status')
 def get_status():
-    """获取系统状态"""
+    """获取系统状态 返回所有会话与视频处理器状态"""
     try:
         if realtime_manager:
             status = realtime_manager.get_all_sessions_status()
@@ -205,7 +230,7 @@ def get_status():
 
 @app.route('/api/qwen/status')
 def get_qwen_status():
-    """获取Qwen模型服务状态"""
+    """获取Qwen模型服务状态 返回模型服务状态"""
     try:
         qwen_service = get_qwen_service()
         status = qwen_service.get_status()
@@ -237,7 +262,7 @@ def analyze_video_emotion():
                 'service_status': qwen_service.get_status()
             }), 503
         
-        # 执行情感分析
+        # 执行情感分析   调用了自身，有问题！！
         result = qwen_service.analyze_video_emotion(
             video_path=video_path,
             audio_path=data.get('audio_path'),
@@ -275,6 +300,7 @@ def handle_start_recording():
         
         # 定义情感分析结果回调
         def emotion_callback(result):
+            # 保持前端事件统一
             socketio.emit('emotion_result', result, room=session_id)
         
         # 开始实时处理
@@ -293,16 +319,13 @@ def handle_stop_recording():
     try:
         session_id = request.sid
         logger.info(f"停止录制: session_id={session_id}")
-        
-        # 停止实时处理
         if realtime_manager:
             realtime_manager.stop_realtime_processing(session_id)
-        
         emit('recording_stopped', {'session_id': session_id})
-        
     except Exception as e:
         logger.error(f"停止录制失败: {e}")
         emit('error', {'message': str(e)})
+
 
 @socketio.on('video_frame')
 def handle_video_frame(data):
@@ -329,55 +352,49 @@ def handle_video_frame(data):
     except Exception as e:
         logger.error(f"处理视频帧失败: {e}")
 
+
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
     """处理音频块"""
     try:
         session_id = request.sid
         audio_data = data.get('audio')
+        client_ts = data.get('client_ts')
         
         if audio_data and realtime_manager:
-            # 解码base64音频数据
-            try:
-                # 清理base64数据
-                audio_data = audio_data.strip()
-                
-                # 移除可能的data URL前缀
-                if audio_data.startswith('data:audio'):
-                    audio_data = audio_data.split(',')[1]
-                
-                # 确保base64字符串长度是4的倍数
-                missing_padding = len(audio_data) % 4
-                if missing_padding:
-                    audio_data += '=' * (4 - missing_padding)
-                
-                # 移除非base64字符
-                import re
-                audio_data = re.sub(r'[^A-Za-z0-9+/=]', '', audio_data)
-                
-                audio_bytes = base64.b64decode(audio_data)
-                realtime_manager.add_audio_chunk(session_id, audio_bytes)
-            except Exception as decode_error:
-                logger.error(f"音频数据解码失败: {decode_error}")
-        
+            if isinstance(audio_data, str) and audio_data.startswith('data:audio'):
+                audio_data = audio_data.split(',')[1]
+            realtime_manager.add_audio_chunk(session_id, audio_data)
+            status = realtime_manager.get_session_status(session_id) if realtime_manager else {}
+            emit('audio_chunk_ack', {
+                'session_id': session_id,
+                'server_ts': time.time(),
+                'client_ts': client_ts,
+                'queue_info': status.get('queue_info', {})
+            })
     except Exception as e:
         logger.error(f"处理音频块失败: {e}")
 
-@socketio.on('get_session_status')
-def handle_get_session_status():
-    """获取会话状态"""
+
+@app.route('/api/inference/stats', methods=['GET'])
+def get_inference_stats():
+    """获取推理时间统计"""
     try:
-        session_id = request.sid
+        if not realtime_manager:
+            return jsonify({'error': '实时管理器未初始化'}), 503
         
-        if realtime_manager:
-            status = realtime_manager.get_session_status(session_id)
-            emit('session_status', status)
-        else:
-            emit('session_status', {'error': '实时管理器未初始化'})
+        stats = realtime_manager.get_inference_stats()
+        
+        return jsonify({
+            'stats': stats,
+            'timestamp': time.time(),
+            'message': '推理统计获取成功'
+        })
         
     except Exception as e:
-        logger.error(f"获取会话状态失败: {e}")
-        emit('error', {'message': str(e)})
+        logger.error(f"获取推理统计失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     import time
