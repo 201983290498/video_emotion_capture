@@ -166,9 +166,9 @@ def check_for_duplicates(file_path):
 
 if __name__ == "__main__":
     # 文件路径
-    file1 = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features_merged.pkl"
-    file2 = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features_3.pkl"  
-    output = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl"
+    file1 = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl"
+    file2 = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features_4.pkl"  
+    output = "/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/all_aggregated_features.pkl"
     
     print("开始合并特征文件...")
     print(f"文件1: {file1}")

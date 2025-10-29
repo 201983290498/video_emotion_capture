@@ -338,11 +338,14 @@
             flex: 1;
             overflow-y: auto;
             padding-right: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .video-list {
-            margin-top: 20px;
-            max-height: 200px;
+            margin-top: 12px;
+            max-height: 120px; /* 缩小视频列表占用空间 */
             overflow-y: auto;
         }
 
@@ -386,13 +389,23 @@
         }
 
         .emotion-results {
-            margin-top: 20px;
+            margin-top: 8px;
             padding: 15px;
             background: #f0f8ff;
             border-radius: 8px;
             border: 1px solid #b3d9ff;
-            max-height: 150px;
+            max-height: 360px; /* 提高情感结果可视高度 */
             overflow-y: auto;
+        }
+
+        .list-toggle-btn {
+            margin-top: 8px;
+            background: transparent;
+            color: #667eea;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: underline;
         }
         
         .emotion-item {
@@ -485,27 +498,24 @@
             
             <!-- 可滚动内容区域 -->
             <div class="scrollable-content">
-                <!-- 视频列表 -->
+                <!-- 情感识别结果置顶，优先可见 -->
+                <div class="emotion-results">
+                    <h4 style="margin-bottom: 10px; color: #333;">
+                        <i class="fas fa-smile"></i>
+                        最新情感识别
+                    </h4>
+                    <div id="emotionResults"></div>
+                </div>
+
+                <!-- 视频列表（缩小显示高度，并提供展开按钮） -->
                 <div class="video-list">
                     <h4 style="margin-bottom: 10px; color: #333;">
                         <i class="fas fa-folder-open"></i>
                         已保存的视频
                     </h4>
                     <div id="videoList"></div>
+                    <button id="toggleVideoListBtn" class="list-toggle-btn">显示更多</button>
                 </div>
-                
-                <!-- 情感识别结果 -->
-                <div class="emotion-results">
-                    <h4 style="margin-bottom: 10px; color: #333;">
-                        <i class="fas fa-smile"></i>
-                        最新情感识别
-                    </h4>
-                    <div id="emotionResults">
-                        <!-- 情感识别结果将在这里显示 -->
-                    </div>
-                </div>
-
-
             </div>
         </div>
         
@@ -627,18 +637,14 @@
         // 开启摄像头
         startCameraBtn.addEventListener('click', async function() {
             try {
+                // 仅请求视频权限，避免首次麦克风权限导致失败
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         width: { ideal: 1280 },
                         height: { ideal: 720 },
                         frameRate: { ideal: 30 }
                     },
-                    audio: {
-                        sampleRate: 44100,
-                        channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true
-                    }
+                    audio: false
                 });
                 
                 videoElement.srcObject = mediaStream;
@@ -651,10 +657,7 @@
                 startRecordingBtn.disabled = false;
                 
                 updateStatus('connected', '摄像头已开启');
-                
-                // 初始化音频分析器
-                initializeAudioAnalyzer();
-                
+            
             } catch (error) {
                 console.error('开启摄像头失败:', error);
                 alert('无法访问摄像头和麦克风，请检查权限设置');
@@ -702,8 +705,15 @@
         // 开始录制函数
         async function startRecording() {
             try {
-                // 分离音频流用于录制
-                audioStream = new MediaStream(mediaStream.getAudioTracks());
+                // 录制时再请求麦克风权限
+                audioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 44100,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
                 
                 isRecording = true;
                 startRecordingBtn.disabled = true;
@@ -717,7 +727,8 @@
                 // 开始发送视频帧
                 startSendingFrames();
                 
-                // 开始发送音频数据
+                // 初始化音频分析器并开始发送音频数据
+                initializeAudioAnalyzer(audioStream);
                 startSendingAudio();
                 
                 // 开始音频录制
@@ -773,6 +784,26 @@
             
             // 通知服务器停止录制
             socket.emit('stop_recording');
+
+            // 停止音频录制与释放资源
+            try {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+            } catch (error) {
+                console.warn('停止MediaRecorder出现问题:', error);
+            }
+            isAudioRecording = false;
+            if (audioStream) {
+                try { audioStream.getTracks().forEach(track => track.stop()); } catch (e) {}
+                audioStream = null;
+            }
+            if (audioContext) {
+                try { audioContext.close(); } catch (e) {}
+                audioContext = null;
+                audioAnalyser = null;
+                audioDataArray = null;
+            }
         }
         
         // 开始发送视频帧
@@ -833,11 +864,12 @@
         }
         
         // 初始化音频分析器
-        function initializeAudioAnalyzer() {
-            if (!mediaStream) return;
+        function initializeAudioAnalyzer(stream = null) {
+            const srcStream = stream || mediaStream;
+            if (!srcStream) return;
             
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(mediaStream);
+            const source = audioContext.createMediaStreamSource(srcStream);
             audioAnalyser = audioContext.createAnalyser();
             
             audioAnalyser.fftSize = 2048;
@@ -1062,13 +1094,30 @@
         // 显示视频列表
         function displayVideoList(videos) {
             videoList.innerHTML = '';
+            const toggleBtn = document.getElementById('toggleVideoListBtn');
+            let expanded = toggleBtn && toggleBtn.dataset.expanded === 'true';
             
             if (videos.length === 0) {
                 videoList.innerHTML = '<p style="text-align: center; color: #666;">暂无视频</p>';
+                if (toggleBtn) toggleBtn.style.display = 'none';
                 return;
             }
             
-            videos.forEach(video => {
+            // 默认仅显示最新的 5 条，展开后显示全部
+            // 后端返回字段为 created (ctime: 秒级时间戳)，前端需兼容
+            const normalize = (v) => {
+                // 优先使用数值时间戳
+                if (typeof v.created === 'number') return new Date(v.created * 1000);
+                // 兼容字符串（ISO 或 locale）
+                if (typeof v.created === 'string') return new Date(v.created);
+                // 兼容旧字段 created_time
+                if (typeof v.created_time === 'number') return new Date(v.created_time * 1000);
+                if (typeof v.created_time === 'string') return new Date(v.created_time);
+                return new Date(0);
+            };
+            const sorted = videos.slice().sort((a,b)=> normalize(b) - normalize(a));
+            const toShow = expanded ? sorted : sorted.slice(0, 5);
+            toShow.forEach(video => {
                 const videoItem = document.createElement('div');
                 videoItem.className = 'video-item';
                 
@@ -1081,7 +1130,9 @@
                 
                 const videoMeta = document.createElement('div');
                 videoMeta.className = 'video-meta';
-                videoMeta.textContent = `${formatFileSize(video.size)} | ${formatDate(video.created_time)}`;
+                // 统一使用 created 字段，自动兼容旧字段
+                const createdValue = (video.created ?? video.created_time);
+                videoMeta.textContent = `${formatFileSize(video.size)} | ${formatDate(createdValue)}`;
                 
                 videoInfo.appendChild(videoName);
                 videoInfo.appendChild(videoMeta);
@@ -1096,11 +1147,22 @@
                 
                 videoList.appendChild(videoItem);
             });
+
+            // 更新展开按钮
+            if (toggleBtn) {
+                toggleBtn.style.display = 'inline';
+                toggleBtn.textContent = expanded ? '收起' : '显示更多';
+                toggleBtn.onclick = () => {
+                    toggleBtn.dataset.expanded = expanded ? 'false' : 'true';
+                    displayVideoList(videos);
+                };
+            }
         }
         
         // 下载视频
         function downloadVideo(filename) {
-            window.open(`/api/videos/${filename}`, '_blank');
+            // 与后端路由一致：GET /videos/<filename>
+            window.open(`/videos/${filename}`, '_blank');
         }
         
         // 格式化文件大小
@@ -1113,9 +1175,24 @@
         }
         
         // 格式化日期
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleString('zh-CN');
+        function formatDate(dateInput) {
+            // 后端提供的是 os.path.getctime → 秒级浮点/整数
+            // 同时兼容字符串（ISO/locale）与旧字段
+            let date;
+            if (typeof dateInput === 'number') {
+                date = new Date(dateInput * 1000);
+            } else if (typeof dateInput === 'string') {
+                // 若是纯数字字符串，按秒级处理
+                if (/^\d+(\.\d+)?$/.test(dateInput)) {
+                    date = new Date(parseFloat(dateInput) * 1000);
+                } else {
+                    date = new Date(dateInput);
+                }
+            } else {
+                date = new Date(dateInput);
+            }
+            const isValid = date instanceof Date && !isNaN(date.getTime());
+            return isValid ? date.toLocaleString('zh-CN') : '未知时间';
         }
         
         // 显示情感识别结果
@@ -1180,6 +1257,14 @@
                 emotionItem.style.transition = 'all 0.3s ease';
                 emotionItem.style.opacity = '1';
                 emotionItem.style.transform = 'translateY(0)';
+                // 自动滚动展示最新结果
+                try {
+                    const resultsContainer = document.querySelector('.emotion-results');
+                    if (resultsContainer) {
+                        resultsContainer.scrollTop = resultsContainer.scrollHeight;
+                    }
+                    emotionItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } catch (e) {}
             }, 50);
         }
         

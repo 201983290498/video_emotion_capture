@@ -5,8 +5,8 @@
 ![项目架构图](./static/image1.png)
 ## 项目概述
 - 基于 `Flask` 与 `Flask-SocketIO` 的实时录音录像与情感分析应用。
-- 前端通过浏览器获取摄像头与麦克风数据，后端实现音视频缓存、合成与情感识别（优先 `LDDUService`，不可用时回退 `QwenService`）。
-- 支持本地 `Qwen3-Omni` 模型推理或外部大模型 API 聊天。
+ - 前端通过浏览器获取摄像头与麦克风数据，后端实现音视频缓存、合成与情感识别（仅使用 `LDDUService`：HumanOmni + LDDU）。
+ - 支持外部大模型 API 聊天。
 
 ## 功能清单
 - 摄像头录制：开启/停止录制、实时预览、状态显示。
@@ -21,15 +21,14 @@
 ## 技术架构
 - 后端：`Flask` Web + `Flask-SocketIO` 实时通信。
 - 音视频：`OpenCV`、`ffmpeg-python`、`numpy`、`Pillow`。
-- 模型：`transformers` 加载 `Qwen3-Omni / Qwen2.5-Omni`；可选 `vLLM`（已简化为GPU优先）。
+ - 模型：HumanOmni + LDDU（通过 `LDDUService`）。
 - 前端：`HTML` + `CSS` + `JavaScript` + `Socket.IO`。
 
 ### 模块分工
 - `app.py`：应用入口、HTTP路由与 SocketIO 事件处理。
 - `config.py`：统一配置（端口、缓存参数、模型路径、API配置等）。
 - `modules/openai_client.py`：外部大模型聊天客户端，含历史与降级策略。
-- `modules/qwen_omni.py`：本地 Qwen Omni 推理器，负责视频/音频情感分析。
-- `modules/qwen_service.py`：Qwen 模型服务（单例），封装加载与分析接口。
+ - `modules/lddu_service.py`：HumanOmni + LDDU 服务（单例），封装加载与分析接口。
 - `modules/video_queue.py`：会话级音视频缓冲队列（最长 10 秒）。
 - `modules/video_processor.py`：异步视频合成与处理器状态维护。
 - `modules/realtime_manager.py`：协调队列、处理器与模型服务的实时管线。
@@ -42,8 +41,7 @@ video_capture/
 ├── config.py              # 配置项
 ├── modules/               # 业务模块
 │   ├── openai_client.py   # Chat API 客户端
-│   ├── qwen_omni.py       # 本地模型推理器
-│   ├── qwen_service.py    # 模型服务（单例）
+│   ├── lddu_service.py    # LDDU 模型服务（单例）
 │   ├── realtime_manager.py# 实时管线协调
 │   ├── video_processor.py # 视频合成与任务队列
 │   └── video_queue.py     # 会话队列与状态
@@ -58,7 +56,7 @@ video_capture/
 2. 初始化 OpenAI 客户端（若配置可用）。
 3. 初始化 `RealtimeManager`：
    - 创建 `VideoQueueManager` 与 `VideoProcessor`。
-   - 加载 LDDU 服务（HumanOmni + LDDU 模型），若失败则加载 Qwen 模型（GPU优先）。
+   - 加载 LDDU 服务（HumanOmni + LDDU 模型）。如加载失败，会记录错误且暂不可用，不再回退到其他模型。
 4. 启动 SocketIO 服务（`debug=False`, `use_reloader=False`，避免重复加载）。
 
 ## 核心实现详解
@@ -72,14 +70,13 @@ video_capture/
   - `POST /api/chat/clear`：清除会话历史。
   - `GET /api/chat/history`：返回过滤后的历史（移除 `system`）。
   - `GET /status`：返回所有会话与视频处理器状态。
-  - `GET /api/qwen/status`：返回模型服务状态（是否加载、错误、模型信息）。
-  - `POST /api/qwen/analyze`：对指定 `video_path` 执行情感分析。
+  - `GET /api/inference/stats`：获取最近推理时间统计（仅 LDDU）。
 - SocketIO 事件：
   - `connect`/`disconnect`：会话连入/清理。
   - `start_recording`/`stop_recording`：控制实时处理循环开关。
-  - `video_frame`：接收图像帧（base64），入队列。
-  - `audio_chunk`：接收音频块（base64），入队列。
-  - `get_session_status`：回传队列与处理状态。
+  - `video_frame`：接收图像帧（base64），入队列；后端返回 `video_frame_ack{server_ts, client_ts, queue_info}`。
+  - `audio_chunk`：接收音频块（base64），入队列；后端返回 `audio_chunk_ack{server_ts, client_ts, queue_info}`。
+  - 后端通过 `emotion_result` 事件向前端房间推送情感结果。
 - 重要启动参数：
   - `socketio.run(..., debug=False, use_reloader=False)`：防止重复加载模型。
 
@@ -102,26 +99,15 @@ video_capture/
   - 组帧与音频对齐、调用 `ffmpeg` 合成、输出到 `videos/`。
 - `get_status()`：返回运行与队列状态。
 
-### modules/qwen_service.py
+### modules/lddu_service.py
 - 单例服务：避免多次加载模型，线程锁保护加载过程。
 - 核心方法：
   - `load_model(model_path, device='auto', max_gpus=4)`：加载并缓存模型实例。
   - `is_model_ready()`：检查模型与处理器均已就绪。
-  - `analyze_video_emotion(video_path, audio_path=None, prompt=None)`：调用推理器分析视频。
-  - `analyze_audio_emotion(audio_path, prompt=None)`：调用推理器分析音频。
+  - `analyze_video_emotion(video_path, audio_path=None, prompt=None)`：分析视频情感并返回结构化结果。
+  - `analyze_audio_emotion(audio_path, prompt=None)`：分析音频情感。
   - `get_status()`：返回加载状态与模型信息。
   - `unload_model()`：卸载资源与清空缓存。
-- 去除了“热重载”接口，简化服务稳定性与可维护性。
-
-### modules/qwen_omni.py
-- `LocalQwenOmni`：根据模型路径自动判定类型（Qwen3/Qwen2.5）。
-- 加载策略：
-  - 优先 GPU，`device_map='auto'`，`torch_dtype=torch.float16`。
-  - 可选 `vLLM`：`tensor_parallel_size=min(max_gpus, torch.cuda.device_count())`。
-- 推理流程：
-  - 视频：提取关键帧（最多 8 帧）+ 可选音频，构造多模态对话，生成情感文本。
-  - 解析：中文关键词映射至英文标签（`happy/sad/angry/...`），返回结构化结果。
-  - 音频：同样构造对话输入，生成并解析情感。
 
 ### modules/realtime_manager.py
 - 管线调度：
@@ -232,11 +218,11 @@ function startSendingFrames(){
   - 合并输出：若存在临时音频，使用 `ffmpeg` 合并为最终视频（通常 `libx264 + aac`），保存到 `videos/` 目录。
 
 ### 模型就绪检测与情感分析
-- 模型服务单例：`LDDUService`（HumanOmni + LDDU），若初始化失败则回退到 `QwenModelService`。
-- 就绪检测：分别检查 LDDU 或 Qwen 服务是否就绪；`GET /api/qwen/status` 返回 Qwen 状态，LDDU 在初始化成功后由日志提示。
-- 触发流程：`RealtimeManager` 在合成完成回调 `_on_video_composed` 中，优先异步调用 `_analyze_emotion_async_lddu(session_id, video_path)`，若不可用则调用 `_analyze_emotion_async`（Qwen）。
-- 分析实现（统一简化）：后端仅返回标签文本，不包含置信度：`{'emotion': '<标签>', 'video_name': '实时分析', 'timestamp': <ts>}`。
-- 结果回推：通过 `socketio.emit('emotion_result', payload, room=session_id)` 发送到对应前端会话，前端渲染仅显示标签。
+ - 模型服务单例：`LDDUService`（HumanOmni + LDDU）。
+ - 就绪检测：LDDU 在初始化成功后由日志提示；当前未提供独立就绪查询路由。
+ - 触发流程：`RealtimeManager` 在合成完成回调 `_on_video_composed` 中异步调用 `_analyze_emotion_async_lddu(session_id, video_path)`。
+ - 分析实现（统一简化）：后端仅返回标签文本，不包含置信度：`{'emotion': '<标签>', 'video_name': '实时分析', 'timestamp': <ts>}`。
+ - 结果回推：通过 `socketio.emit('emotion_result', payload, room=session_id)` 发送到对应前端会话，前端渲染仅显示标签。
 
 ## API 与事件
 
@@ -247,22 +233,21 @@ function startSendingFrames(){
 - `POST /api/chat/clear`：清除指定会话历史。
 - `GET /api/chat/history?session_id=...`：返回最近历史（不含 `system`）。
 - `GET /status`：返回所有会话与处理器状态。
-- `GET /api/qwen/status`：返回模型服务状态与信息。
-- `POST /api/qwen/analyze`：`{"video_path":"..."}` → 情感结果。
+ - `GET /api/inference/stats`：返回最近推理时间统计（仅 LDDU）。
 
 ### SocketIO 事件
 - `connect` / `disconnect`
 - `start_recording` / `stop_recording`
-- `video_frame`：`{frame: <base64 image>}`
-- `audio_chunk`：`{audio: <base64 data>}`（自动清理前缀、补齐 `=` 填充）
-- `get_session_status` → `session_status`
+ - `video_frame`：`{frame: <base64 image>, client_ts}` → `video_frame_ack{server_ts, client_ts, queue_info}`
+ - `audio_chunk`：`{audio: <base64 data>, client_ts}` → `audio_chunk_ack{server_ts, client_ts, queue_info}`
+ - `emotion_result`：后端推送情感结果到前端（仅标签与时间戳）
 
 ## 安装与运行
 - 依赖安装：`pip install -r requirements.txt`
 - 环境变量（`.env` 可选）：
   - `OPENAI_API_KEY`、`OPENAI_API_BASE`、`OPENAI_MODEL`
-  - `QWEN_MODEL_PATH`（本地模型路径）
-- 启动：`python app.py`，访问 `http://localhost:5000`
+  - `HUMANOMNI_MODEL_PATH`、`LDDU_MODEL_DIR`、`LDDU_INIT_CHECKPOINT`、`INFERENCE_LOG_FILE`
+ - 启动：`python app.py`，默认端口为 `Config.PORT`（默认 `5001`），访问 `http://localhost:5001`
 
 ## 常见问题与排查
 - 模型重复加载：已通过 `debug=False` 与 `use_reloader=False` 解决。
@@ -271,7 +256,7 @@ function startSendingFrames(){
 - 处理器警告（`rope_parameters`）：由模型/框架版本差异引起，不影响主要功能。
 
 ## 测试与示例
-- `test_video_emotion.py`：加载 `Qwen3-Omni`，对 `videos/` 中视频执行多模态情感分析，打印结果。
+- `test_emotion_speed.py`：对 LDDU 模型进行推理速度测试。
 - 前端演示：在主页开启摄像头录制，查看实时情感回推与视频列表。
 
 ## 设计原则与演进

@@ -181,82 +181,82 @@ def batch_extract_video_features(video_paths, humanomni_model, visual_processor=
         
         # 批量提取特征 - 使用自动混合精度和优化的内存管理
         with torch.no_grad(), torch.autocast(device_type=device.type, dtype=model_dtype):
-            try:
-                if inputs_bert_dict is not None:
-                    video_features_list = humanomni_model.encode_images_or_videos(
-                        input_images,
-                        device,
-                        inputs_bert_dict
-                    )
+            # try:
+            if inputs_bert_dict is not None:
+                video_features_list = humanomni_model.encode_images_or_videos(
+                    input_images,
+                    device,
+                    inputs_bert_dict
+                )
+            else:
+                video_features_list = humanomni_model.encode_images_or_videos(
+                    input_images,
+                    device
+                )
+                
+            # 及时同步以避免内存泄漏
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            
+            # 将结果映射回原始位置
+            success_count = 0
+            for idx, (original_idx, feature) in enumerate(zip(valid_frame_indices, video_features_list)):
+                if feature is not None:
+                    # 确保特征在正确的设备和数据类型上
+                    feature = feature.to(device=device, dtype=model_dtype)
+                    batch_video_features[i + original_idx] = feature
+                    success_count += 1
                 else:
-                    video_features_list = humanomni_model.encode_images_or_videos(
-                        input_images,
-                        device
-                    )
-                  
-                # 及时同步以避免内存泄漏
-                if device.type == 'cuda':
-                    torch.cuda.synchronize()
-                
-                # 将结果映射回原始位置
-                success_count = 0
-                for idx, (original_idx, feature) in enumerate(zip(valid_frame_indices, video_features_list)):
-                    if feature is not None:
-                        # 确保特征在正确的设备和数据类型上
-                        feature = feature.to(device=device, dtype=model_dtype)
-                        batch_video_features[i + original_idx] = feature
-                        success_count += 1
-                    else:
-                        print(f"警告: 视频 {batch_video_paths[original_idx]} 的特征提取返回None")
+                    print(f"警告: 视频 {batch_video_paths[original_idx]} 的特征提取返回None")
                         
-            except Exception as e:
-                print(f"批量提取视觉特征时出错: {str(e)}")
-                traceback.print_exc()
+            # except Exception as e:
+            #     print(f"批量提取视觉特征时出错: {str(e)}")
+            #     traceback.print_exc()
                 
-                # 回退到逐个处理 - 优化内存使用
-                print("回退到逐个处理...")
-                individual_success_count = 0
-                for j, (frames, original_idx) in enumerate(zip(valid_processed_frames, valid_frame_indices)):
-                    try:
-                        single_input = [(frames, 'video')]
+            #     # 回退到逐个处理 - 优化内存使用
+            #     print("回退到逐个处理...")
+            #     individual_success_count = 0
+            #     for j, (frames, original_idx) in enumerate(zip(valid_processed_frames, valid_frame_indices)):
+            #         try:
+            #             single_input = [(frames, 'video')]
                           
-                        if inputs_bert_dict is not None:
-                            # 为单个视频创建对应的BERT输入
-                            single_bert_input = {}
-                            for k, v in inputs_bert_dict.items():
-                                if isinstance(v, torch.Tensor) and v.shape[0] > j:
-                                    # 确保正确的设备传输
-                                    single_bert_input[k] = v[j:j+1].to(device, non_blocking=True)
-                            # 使用自动混合精度
-                            with torch.autocast(device_type=device.type, dtype=model_dtype):
-                                single_features = humanomni_model.encode_images_or_videos(
-                                    single_input,
-                                    device,
-                                    single_bert_input
-                                )
-                        else:
-                            # 使用自动混合精度
-                            with torch.autocast(device_type=device.type, dtype=model_dtype):
-                                single_features = humanomni_model.encode_images_or_videos(
-                                    single_input,
-                                    device
-                                )
+            #             if inputs_bert_dict is not None:
+            #                 # 为单个视频创建对应的BERT输入
+            #                 single_bert_input = {}
+            #                 for k, v in inputs_bert_dict.items():
+            #                     if isinstance(v, torch.Tensor) and v.shape[0] > j:
+            #                         # 确保正确的设备传输
+            #                         single_bert_input[k] = v[j:j+1].to(device, non_blocking=True)
+            #                 # 使用自动混合精度
+            #                 with torch.autocast(device_type=device.type, dtype=model_dtype):
+            #                     single_features = humanomni_model.encode_images_or_videos(
+            #                         single_input,
+            #                         device,
+            #                         single_bert_input
+            #                     )
+            #             else:
+            #                 # 使用自动混合精度
+            #                 with torch.autocast(device_type=device.type, dtype=model_dtype):
+            #                     single_features = humanomni_model.encode_images_or_videos(
+            #                         single_input,
+            #                         device
+            #                     )
                           
-                        # 及时同步和清理
-                        if device.type == 'cuda':
-                            torch.cuda.synchronize()
-                            torch.cuda.empty_cache()
+            #             # 及时同步和清理
+            #             if device.type == 'cuda':
+            #                 torch.cuda.synchronize()
+            #                 torch.cuda.empty_cache()
                         
-                        if single_features and len(single_features) > 0 and single_features[0] is not None:
-                            feature = single_features[0].to(device=device, dtype=model_dtype)
-                            batch_video_features[i + original_idx] = feature
-                            individual_success_count += 1
-                        else:
-                            print(f"单个视频处理返回空特征: {batch_video_paths[original_idx]}")
-                    except Exception as single_e:
-                        print(f"单个视频处理失败 {batch_video_paths[original_idx]}: {str(single_e)}")
+            #             if single_features and len(single_features) > 0 and single_features[0] is not None:
+            #                 feature = single_features[0].to(device=device, dtype=model_dtype)
+            #                 batch_video_features[i + original_idx] = feature
+            #                 individual_success_count += 1
+            #             else:
+            #                 print(f"单个视频处理返回空特征: {batch_video_paths[original_idx]}")
+            #         except Exception as single_e:
+            #             print(f"单个视频处理失败 {batch_video_paths[original_idx]}: {str(single_e)}")
                 
-                print(f"逐个处理成功 {individual_success_count}/{len(valid_processed_frames)} 个视频")
+            #     print(f"逐个处理成功 {individual_success_count}/{len(valid_processed_frames)} 个视频")
     
     # 清理GPU内存
     if device.type == 'cuda':
@@ -384,23 +384,23 @@ def batch_extract_audio_features(video_paths, humanomni_model, device=None, samp
             print("批量提取音频特征时出错")
             for j, audio_tensor in enumerate(batch_audio_tensors):
                 original_idx = valid_indices[j]
-                try:
-                    audio_tensor = audio_tensor.to(device=target_device, dtype=model_dtype, non_blocking=True)
-                    with torch.no_grad():
-                        audio_features = humanomni_model.encode_audios(audio_tensor.unsqueeze(0))
-                    
-                    if audio_features is not None and len(audio_features) > 0:
-                        feature = audio_features[0]
-                        if len(feature.shape) == 3 and feature.shape[0] == 1:
-                            feature = feature.squeeze(0)
-                        batch_audio_features[i + original_idx] = feature.cpu()
-                    else:
-                        default_features = torch.randn(500, 896, device=target_device, dtype=model_dtype) * 0.01
-                        batch_audio_features[i + original_idx] = default_features.cpu()
-                except Exception as e_inner:
-                    print(f"逐个提取音频特征时出错 {batch_video_paths[original_idx]}: {str(e_inner)}")
+                # try:
+                audio_tensor = audio_tensor.to(device=target_device, dtype=model_dtype, non_blocking=True)
+                with torch.no_grad():
+                    audio_features = humanomni_model.encode_audios(audio_tensor.unsqueeze(0))
+                
+                if audio_features is not None and len(audio_features) > 0:
+                    feature = audio_features[0]
+                    if len(feature.shape) == 3 and feature.shape[0] == 1:
+                        feature = feature.squeeze(0)
+                    batch_audio_features[i + original_idx] = feature.cpu()
+                else:
                     default_features = torch.randn(500, 896, device=target_device, dtype=model_dtype) * 0.01
                     batch_audio_features[i + original_idx] = default_features.cpu()
+                # except Exception as e_inner:
+                #     print(f"逐个提取音频特征时出错 {batch_video_paths[original_idx]}: {str(e_inner)}")
+                #     default_features = torch.randn(500, 896, device=target_device, dtype=model_dtype) * 0.01
+                #     batch_audio_features[i + original_idx] = default_features.cpu()
         
         # 为无效音频创建默认特征
         for j in range(len(batch_video_paths)):
@@ -443,12 +443,8 @@ def batch_extract_text_features(video_paths, whisper_model=None, whisper_process
     # 第一阶段：批量预处理所有音频
     all_audio_data = []
     for video_path in video_paths:
-        try:
-            audio_tensor, sr = process_audio(video_path, sample_rate=sample_rate, processor=None)
-            all_audio_data.append((audio_tensor, video_path))
-        except Exception as e:
-            print(f"预处理音频时出错 {video_path}: {str(e)}")
-            all_audio_data.append((None, video_path))
+        audio_tensor, sr = process_audio(video_path, sample_rate=sample_rate, processor=None)
+        all_audio_data.append((audio_tensor, video_path))
     
     # 第二阶段：批量处理转录和文本特征
     for i in range(0, len(video_paths), batch_size):
@@ -466,106 +462,91 @@ def batch_extract_text_features(video_paths, whisper_model=None, whisper_process
         # 批量转录
         batch_transcriptions = [""] * len(batch_video_paths)
         if whisper_model and whisper_processor and valid_audio_tensors:
-            try:
-                # 批量处理音频转录
-                audio_arrays = []
-                for audio_tensor in valid_audio_tensors:
-                    audio_np = audio_tensor.squeeze().cpu().numpy()
-                    audio_arrays.append(audio_np)
-                
-                # 使用Whisper批量处理
-                inputs = whisper_processor(
-                    audio_arrays, 
-                    sampling_rate=sample_rate, 
-                    return_tensors="pt", 
-                    padding=True
-                )
-                input_features = inputs.input_features.to(device=target_device, dtype=target_dtype, non_blocking=True)
-                
-                # 批量生成转录
-                generated_ids = whisper_model.generate(
-                    input_features,
-                    language='en',
-                    max_new_tokens=128,
-                    num_beams=1
-                )
-                transcriptions = whisper_processor.batch_decode(generated_ids, skip_special_tokens=True)
-                
-                # 分配转录结果
-                for idx, transcription in zip(valid_audio_indices, transcriptions):
-                    batch_transcriptions[idx] = transcription
+            # 批量处理音频转录
+            audio_arrays = []
+            for audio_tensor in valid_audio_tensors:
+                audio_np = audio_tensor.squeeze().cpu().numpy()
+                audio_arrays.append(audio_np)
+            
+            # 使用Whisper批量处理
+            inputs = whisper_processor(
+                audio_arrays, 
+                sampling_rate=sample_rate, 
+                return_tensors="pt", 
+                padding=True
+            )
+            input_features = inputs.input_features.to(device=target_device, dtype=target_dtype, non_blocking=True)
+            
+            # 批量生成转录
+            generated_ids = whisper_model.generate(
+                input_features,
+                language='en',
+                max_new_tokens=128,
+                num_beams=1
+            )
+            transcriptions = whisper_processor.batch_decode(generated_ids, skip_special_tokens=True)
+            
+            # 分配转录结果
+            for idx, transcription in zip(valid_audio_indices, transcriptions):
+                batch_transcriptions[idx] = transcription
                     
-            except Exception:
-                print("批量转录音频时出错")
-                # 回退到逐个处理
-                for j in valid_audio_indices:
-                    try:
-                        audio_tensor, video_path = batch_audio_data[j]
-                        audio_np = audio_tensor.squeeze().cpu().numpy()
-                        inputs = whisper_processor(audio_np, sampling_rate=sample_rate, return_tensors="pt")
-                        input_features = inputs.input_features.to(device=target_device, dtype=target_dtype, non_blocking=True)
-                        generated_ids = whisper_model.generate(input_features, language='en')
-                        transcription = whisper_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                        batch_transcriptions[j] = transcription
-                    except Exception:
-                        print(f"转录音频时出错 {video_path}")
         
         # 批量提取文本特征
         valid_text_indices = [j for j, transcript in enumerate(batch_transcriptions) if transcript.strip()]
         valid_transcripts = [batch_transcriptions[j] for j in valid_text_indices]
         
         if valid_transcripts and bert_model and bert_tokenizer:
-            try:
-                # 批量BERT处理
-                with torch.no_grad():
-                    inputs = bert_tokenizer(
-                        valid_transcripts,
-                        return_tensors='pt',
-                        padding=True,
-                        truncation=True,
-                        max_length=512
-                    )
-                    
-                    input_ids = inputs.input_ids.to(device=target_device, dtype=torch.long, non_blocking=True)
-                    attention_mask = inputs.attention_mask.to(device=target_device, dtype=torch.long, non_blocking=True)
-                    
-                    outputs = bert_model(input_ids=input_ids, attention_mask=attention_mask)
-                    last_hidden_state = outputs.last_hidden_state
-                    
-                    # 计算特征均值并扩展维度
-                    text_features = torch.mean(last_hidden_state, dim=1)
-                    text_features = text_features.repeat_interleave(500, dim=0).view(len(valid_transcripts), 500, -1)
-                    
-                    # 分配特征
-                    for idx, feature in zip(valid_text_indices, text_features):
-                        batch_text_features[i + idx] = feature.cpu()
+            # try:
+            # 批量BERT处理
+            with torch.no_grad():
+                inputs = bert_tokenizer(
+                    valid_transcripts,
+                    return_tensors='pt',
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                )
+                
+                input_ids = inputs.input_ids.to(device=target_device, dtype=torch.long, non_blocking=True)
+                attention_mask = inputs.attention_mask.to(device=target_device, dtype=torch.long, non_blocking=True)
+                
+                outputs = bert_model(input_ids=input_ids, attention_mask=attention_mask)
+                last_hidden_state = outputs.last_hidden_state
+                
+                # 计算特征均值并扩展维度
+                text_features = torch.mean(last_hidden_state, dim=1)
+                text_features = text_features.repeat_interleave(500, dim=0).view(len(valid_transcripts), 500, -1)
+                
+                # 分配特征
+                for idx, feature in zip(valid_text_indices, text_features):
+                    batch_text_features[i + idx] = feature.cpu()
                         
-            except Exception:
-                print("批量提取文本特征时出错")
-                # 回退到逐个处理
-                for j, transcript in enumerate(batch_transcriptions):
-                    if transcript.strip() and bert_model and bert_tokenizer:
-                        try:
-                            inputs = bert_tokenizer(
-                                transcript,
-                                return_tensors='pt',
-                                padding=True,
-                                truncation=True,
-                                max_length=512
-                            )
+            # except Exception:
+            #     print("批量提取文本特征时出错")
+            #     # 回退到逐个处理
+            #     for j, transcript in enumerate(batch_transcriptions):
+            #         if transcript.strip() and bert_model and bert_tokenizer:
+            #             try:
+            #                 inputs = bert_tokenizer(
+            #                     transcript,
+            #                     return_tensors='pt',
+            #                     padding=True,
+            #                     truncation=True,
+            #                     max_length=512
+            #                 )
                             
-                            input_ids = inputs.input_ids.to(device=target_device, dtype=torch.long, non_blocking=True)
-                            attention_mask = inputs.attention_mask.to(device=target_device, dtype=torch.long, non_blocking=True)
+            #                 input_ids = inputs.input_ids.to(device=target_device, dtype=torch.long, non_blocking=True)
+            #                 attention_mask = inputs.attention_mask.to(device=target_device, dtype=torch.long, non_blocking=True)
                             
-                            outputs = bert_model(input_ids=input_ids, attention_mask=attention_mask)
-                            last_hidden_state = outputs.last_hidden_state
+            #                 outputs = bert_model(input_ids=input_ids, attention_mask=attention_mask)
+            #                 last_hidden_state = outputs.last_hidden_state
                             
-                            text_feature = torch.mean(last_hidden_state, dim=1)
-                            text_feature = text_feature.repeat(500, 1)
+            #                 text_feature = torch.mean(last_hidden_state, dim=1)
+            #                 text_feature = text_feature.repeat(500, 1)
                             
-                            batch_text_features[i + j] = text_feature.cpu()
-                        except Exception:
-                            print("逐个提取文本特征时出错")
+            #                 batch_text_features[i + j] = text_feature.cpu()
+            #             except Exception:
+            #                 print("逐个提取文本特征时出错")
         
         # 为无效文本创建默认特征
         for j in range(len(batch_video_paths)):
@@ -684,7 +665,7 @@ def batch_extract_multimodal_features(video_paths, models=None, model_path=None,
             if vf is not None:
                 m = float(vf.mean().cpu())
                 s = float(vf.std().cpu())
-                print(f"视觉特征[{idx}] mean={m:.6f}, std={s:.6f}")
+                # print(f"视觉特征[{idx}] mean={m:.6f}, std={s:.6f}")
     except Exception:
         pass
 
@@ -701,7 +682,7 @@ def batch_extract_multimodal_features(video_paths, models=None, model_path=None,
             if af is not None:
                 m = float(af.mean().cpu())
                 s = float(af.std().cpu())
-                print(f"音频特征[{idx}] mean={m:.6f}, std={s:.6f}")
+                # print(f"音频特征[{idx}] mean={m:.6f}, std={s:.6f}")
     except Exception:
         pass
 
@@ -724,7 +705,7 @@ def batch_extract_multimodal_features(video_paths, models=None, model_path=None,
                 if tf is not None:
                     m = float(tf.mean().cpu())
                     s = float(tf.std().cpu())
-                    print(f"文本特征[{idx}] mean={m:.6f}, std={s:.6f}")
+                    # print(f"文本特征[{idx}] mean={m:.6f}, std={s:.6f}")
     except Exception:
         pass
 

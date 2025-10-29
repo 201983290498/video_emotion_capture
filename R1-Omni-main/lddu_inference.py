@@ -36,7 +36,7 @@ def disable_torch_init():
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# 加载预训练的模型权重文件 pytorch_model_0.bin. 对模型进行初始化
+# 加载预训练的模型权重文件 pytorch_model_10.bin. 对模型进行初始化
 def init_model(args, device, n_gpu, local_rank):
     """
     按照train.py中的方法初始化LDDU模型
@@ -53,16 +53,10 @@ def init_model(args, device, n_gpu, local_rank):
                 if 'model_state_dict' in checkpoint:
                     model_state_dict = checkpoint['model_state_dict']
                     print("找到 model_state_dict")
-                elif 'state_dict' in checkpoint:
-                    model_state_dict = checkpoint['state_dict']
-                    print("找到 state_dict")
                 else:
                     # 假设整个字典就是模型状态字典
                     model_state_dict = checkpoint
                     print("使用整个检查点作为模型状态字典")
-            else:
-                model_state_dict = None
-                print("检查点格式未知")
                 
         except Exception as e:
             print(f"加载检查点失败: {e}")
@@ -189,12 +183,12 @@ def init_model(args, device, n_gpu, local_rank):
                         # 再检查是否与初始值不同（表示确实更新了）
                         if not torch.equal(current_value_cpu, initial_value_cpu):
                             updated_count += 1
-                        else:
-                            print(f"{key}: 权重未更新（与初始化相同）")
-                    else:
-                        print(f"{key}: 权重与检查点不同")
-                else:
-                    print(f"{key}: 初始值不存在")
+                #         else:
+                #             print(f"{key}: 权重未更新（与初始化相同）")
+                #     else:
+                #         print(f"{key}: 权重与检查点不同")
+                # else:
+                #     print(f"{key}: 初始值不存在")
         
         print(f"权重加载统计: {updated_count}/{len(model_dict_after)} 参数已更新")
         
@@ -211,7 +205,7 @@ def init_model(args, device, n_gpu, local_rank):
         
         # 如有未更新权重，尝试一次非严格的‘强制覆盖’
         if updated_count < len(model_dict_after):
-            print("\n=== 强制更新未更新的权重 ===")
+            # print("\n=== 强制更新未更新的权重 ===")
             force_update_count = 0
             forced_state_dict = copy.deepcopy(model_dict_after)
             
@@ -237,7 +231,7 @@ def init_model(args, device, n_gpu, local_rank):
             # 应用强制更新的权重
             try:
                 model.load_state_dict(forced_state_dict, strict=False)
-                print(f"强制更新完成: {force_update_count}/{len(model_dict_after)} 参数已被强制更新")
+                # print(f"强制更新完成: {force_update_count}/{len(model_dict_after)} 参数已被强制更新")
             except Exception as e:
                 print(f"强制更新失败: {e}")
     else:
@@ -255,6 +249,10 @@ class LDDUInference:
         self.humanomni_model_path = humanomni_model_path
         self.task_config = task_config
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # 缓存特征提取中间件模型，避免每次推理重复加载
+        import threading
+        self._feature_models_lock = threading.RLock()
+        self.feature_models = None
         
         # 准备args对象以匹配train.py中的init_model接口
         args = task_config
@@ -285,7 +283,15 @@ class LDDUInference:
         # 设置模型和投影层为评估模式
         self.model.eval()
 
-        print("LDDU模型初始化完成")
+        # print("LDDU模型初始化完成")
+
+    def ensure_feature_models(self):
+        """确保HumanOmni/BERT等特征提取模型已加载到内存并可复用"""
+        if self.feature_models is None:
+            with self._feature_models_lock:
+                if self.feature_models is None:
+                    # 使用设备与humanomni路径加载一次并缓存
+                    self.feature_models = load_models_for_device(self.device, self.humanomni_model_path)
 
     def preprocess_features(self, features):
         """特征预处理，添加归一化和统计信息"""
@@ -296,21 +302,21 @@ class LDDUInference:
         # 与训练保持一致：视觉特征最多500帧
         max_frames = 500
         if visual_features is not None and hasattr(visual_features, 'shape') and visual_features.shape[0] > max_frames:
-            print(f"警告: 视觉特征长度 {visual_features.shape[0]} 超过最大长度 {max_frames}，进行截断")
+            # print(f"警告: 视觉特征长度 {visual_features.shape[0]} 超过最大长度 {max_frames}，进行截断")
             visual_features = visual_features[:max_frames]
         
-        # 打印原始特征统计，帮助定位‘输入几乎一样’的问题
-        def _stats(name, arr):
-            try:
-                return f"{name}: shape={tuple(arr.shape)}, mean={arr.mean():.4f}, std={arr.std():.4f}, min={arr.min():.4f}, max={arr.max():.4f}"
-            except Exception:
-                return f"{name}: 无法统计"
-        if visual_features is not None:
-            print(_stats("视觉", visual_features))
-        if audio_features is not None:
-            print(_stats("音频", audio_features))
-        if text_features is not None:
-            print(_stats("文本", text_features))
+        # # 打印原始特征统计，帮助定位‘输入几乎一样’的问题
+        # def _stats(name, arr):
+        #     try:
+        #         return f"{name}: shape={tuple(arr.shape)}, mean={arr.mean():.4f}, std={arr.std():.4f}, min={arr.min():.4f}, max={arr.max():.4f}"
+        #     except Exception:
+        #         return f"{name}: 无法统计"
+        # if visual_features is not None:
+        #     print(_stats("视觉", visual_features))
+        # if audio_features is not None:
+        #     print(_stats("音频", audio_features))
+        # if text_features is not None:
+        #     print(_stats("文本", text_features))
         
         # 转换与设备放置（移除重复归一化，避免压平差异）
         def to_tensor_on_device(features):
@@ -331,12 +337,12 @@ class LDDUInference:
         text_features = to_tensor_on_device(text_features)
 
         # 稳定化特征，避免全零或异常数值导致掩码全部为0
-        if visual_features is not None:
-            visual_features = self.stabilize_tensor(visual_features, "视觉特征")
-        if audio_features is not None:
-            audio_features = self.stabilize_tensor(audio_features, "音频特征")
-        if text_features is not None:
-            text_features = self.stabilize_tensor(text_features, "文本特征")
+        # if visual_features is not None:
+        #     visual_features = self.stabilize_tensor(visual_features, "视觉特征")
+        # if audio_features is not None:
+        #     audio_features = self.stabilize_tensor(audio_features, "音频特征")
+        # if text_features is not None:
+        #     text_features = self.stabilize_tensor(text_features, "文本特征")
         
         def make_mask(feat):
             if feat is None:
@@ -353,18 +359,18 @@ class LDDUInference:
         audio_mask = make_mask(audio_features)
         text_mask = make_mask(text_features)
 
-        # 打印掩码统计，辅助定位跨注意力失效问题
-        def _mask_stats(name, m):
-            try:
-                return f"{name}掩码: shape={tuple(m.shape)}, 有效步数={int(m.sum().item())}/{m.numel()}"
-            except Exception:
-                return f"{name}掩码: 无法统计"
-        if visual_mask is not None:
-            print(_mask_stats("视觉", visual_mask))
-        if audio_mask is not None:
-            print(_mask_stats("音频", audio_mask))
-        if text_mask is not None:
-            print(_mask_stats("文本", text_mask))
+        # # 打印掩码统计，辅助定位跨注意力失效问题
+        # def _mask_stats(name, m):
+        #     try:
+        #         return f"{name}掩码: shape={tuple(m.shape)}, 有效步数={int(m.sum().item())}/{m.numel()}"
+        #     except Exception:
+        #         return f"{name}掩码: 无法统计"
+        # if visual_mask is not None:
+        #     print(_mask_stats("视觉", visual_mask))
+        # if audio_mask is not None:
+        #     print(_mask_stats("音频", audio_mask))
+        # if text_mask is not None:
+        #     print(_mask_stats("文本", text_mask))
         
         # 准备标签输入
         label_input = torch.arange(6, device=self.device, dtype=torch.long)
@@ -381,10 +387,9 @@ class LDDUInference:
             'label_mask': label_mask
         }
     
-    # 为什么要写这个？在myModel类中是有的
     def fix_label_wise_attention(self):
         """修复 label_wise_attention 模块的 softmax 问题"""
-        print("修复label_wise_attention模块...")
+        # print("修复label_wise_attention模块...")
         
         # 保存原始的forward方法
         original_forward = self.model.label_wise_attention.forward
@@ -423,15 +428,15 @@ class LDDUInference:
         
         # 替换forward方法
         self.model.label_wise_attention.forward = safe_forward
-        print("label_wise_attention模块修复完成")
+        # print("label_wise_attention模块修复完成")
 
     def stabilize_tensor(self, tensor, name):
         """数值稳定性处理"""
         if torch.isnan(tensor).any() or torch.isinf(tensor).any():
-            print(f"稳定化处理: {name}")
-            print(f"处理前 - 包含NaN: {torch.isnan(tensor).any()}, 包含Inf: {torch.isinf(tensor).any()}")
+            # print(f"稳定化处理: {name}")
+            # print(f"处理前 - 包含NaN: {torch.isnan(tensor).any()}, 包含Inf: {torch.isinf(tensor).any()}")
             tensor = torch.nan_to_num(tensor, nan=0.0, posinf=1.0, neginf=0.0)
-            print(f"处理后 - 包含NaN: {torch.isnan(tensor).any()}, 包含Inf: {torch.isinf(tensor).any()}")
+            # print(f"处理后 - 包含NaN: {torch.isnan(tensor).any()}, 包含Inf: {torch.isinf(tensor).any()}")
         
         # 检查是否全零
         if torch.all(tensor == 0):
@@ -481,8 +486,9 @@ class LDDUInference:
         total_videos = 1  # 一次只处理一个视频
         parallel_config = optimize_parallel_config(gpu_count, total_videos)
     
-        # 尝试适配新接口
-        models = load_models_for_device(self.device, self.humanomni_model_path)
+        # 尝试适配新接口 - 复用缓存的特征提取模型
+        self.ensure_feature_models()
+        models = self.feature_models
         processors = {}
         device = self.device
         
@@ -686,12 +692,12 @@ def create_lddu_config():
 
 def inspect_checkpoint(checkpoint_path):
     """检查检查点文件内容"""
-    print(f"=== 检查点文件分析: {checkpoint_path} ===")
+    # print(f"=== 检查点文件分析: {checkpoint_path} ===")
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
-    print(f"检查点类型: {type(checkpoint)}")
+    # print(f"检查点类型: {type(checkpoint)}")
     
     if isinstance(checkpoint, dict):
-        print("检查点键:")
+        # print("检查点键:")
         for key in checkpoint.keys():
             if hasattr(checkpoint[key], 'shape'):
                 print(f"  {key}: {checkpoint[key].shape}")

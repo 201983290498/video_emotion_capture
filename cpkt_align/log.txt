@@ -187,3 +187,192 @@
 2025-10-25 22:19:19,264:INFO: 预测分数分布: Min=0.0074, Max=0.0078, Mean=0.0076, Median=0.0077, Std=0.0001
 2025-10-25 22:19:19,598:INFO: 最佳阈值: 0.0100, Train_micro_f1: 0.8980, Train_micro_precision: 0.8980, Train_micro_recall: 0.8980, Train_acc: 0.0000
 2025-10-25 22:19:19,610:INFO: Final test results: f1 0.449060,	p 0.542629,	r 0.383015,	acc 0.428100, threshold 0.009999999776482582
+2025-10-26 21:53:09,381:INFO: Effective parameters:
+2025-10-26 21:53:09,381:INFO:   <<< aligned: False
+2025-10-26 21:53:09,381:INFO:   <<< audio_dim: 896
+2025-10-26 21:53:09,381:INFO:   <<< audio_model: audio-base
+2025-10-26 21:53:09,381:INFO:   <<< audio_num_hidden_layers: 3
+2025-10-26 21:53:09,381:INFO:   <<< average: False
+2025-10-26 21:53:09,381:INFO:   <<< batch_size: 32
+2025-10-26 21:53:09,381:INFO:   <<< bert_model: bert-base
+2025-10-26 21:53:09,381:INFO:   <<< bert_num_hidden_layers: 3
+2025-10-26 21:53:09,381:INFO:   <<< cdl: 2.0
+2025-10-26 21:53:09,381:INFO:   <<< cml: 0.5
+2025-10-26 21:53:09,381:INFO:   <<< coef_lr: 0.1
+2025-10-26 21:53:09,381:INFO:   <<< crl: 0.3
+2025-10-26 21:53:09,381:INFO:   <<< cross_model: cross-base
+2025-10-26 21:53:09,381:INFO:   <<< cross_num_hidden_layers: 3
+2025-10-26 21:53:09,381:INFO:   <<< data_path: /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl
+2025-10-26 21:53:09,381:INFO:   <<< decoder_model: decoder-base
+2025-10-26 21:53:09,381:INFO:   <<< decoder_num_hidden_layers: 1
+2025-10-26 21:53:09,381:INFO:   <<< device: cuda
+2025-10-26 21:53:09,381:INFO:   <<< do_test: False
+2025-10-26 21:53:09,381:INFO:   <<< do_train: True
+2025-10-26 21:53:09,381:INFO:   <<< epochs: 1
+2025-10-26 21:53:09,381:INFO:   <<< final_loss: 1.0
+2025-10-26 21:53:09,382:INFO:   <<< gpu: 0
+2025-10-26 21:53:09,382:INFO:   <<< gradient_accumulation_steps: 1
+2025-10-26 21:53:09,382:INFO:   <<< hidden_size: 896
+2025-10-26 21:53:09,382:INFO:   <<< init_model: None
+2025-10-26 21:53:09,382:INFO:   <<< kll: 0.0
+2025-10-26 21:53:09,382:INFO:   <<< label_dim: 896
+2025-10-26 21:53:09,382:INFO:   <<< latent_size: 128
+2025-10-26 21:53:09,382:INFO:   <<< local_rank: 0
+2025-10-26 21:53:09,382:INFO:   <<< lr: 0.001
+2025-10-26 21:53:09,382:INFO:   <<< lr_decay: 0.9
+2025-10-26 21:53:09,382:INFO:   <<< max_frames: 500
+2025-10-26 21:53:09,382:INFO:   <<< max_label: 6
+2025-10-26 21:53:09,382:INFO:   <<< max_sequence: 500
+2025-10-26 21:53:09,382:INFO:   <<< max_words: 500
+2025-10-26 21:53:09,382:INFO:   <<< moco_queue: 8192
+2025-10-26 21:53:09,382:INFO:   <<< n_display: 10
+2025-10-26 21:53:09,382:INFO:   <<< n_gpu: 1
+2025-10-26 21:53:09,382:INFO:   <<< num_classes: 6
+2025-10-26 21:53:09,382:INFO:   <<< num_thread_reader: 1
+2025-10-26 21:53:09,382:INFO:   <<< output_dir: .//cpkt_align
+2025-10-26 21:53:09,382:INFO:   <<< pro_dim: 896
+2025-10-26 21:53:09,382:INFO:   <<< rel: 0.1
+2025-10-26 21:53:09,382:INFO:   <<< seed: 42
+2025-10-26 21:53:09,382:INFO:   <<< temperature: 0.07
+2025-10-26 21:53:09,382:INFO:   <<< text_dim: 768
+2025-10-26 21:53:09,382:INFO:   <<< threshold: 0.1
+2025-10-26 21:53:09,382:INFO:   <<< unaligned_data_path: /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl
+2025-10-26 21:53:09,382:INFO:   <<< video_dim: 896
+2025-10-26 21:53:09,382:INFO:   <<< visual_model: visual-base
+2025-10-26 21:53:09,382:INFO:   <<< visual_num_hidden_layers: 3
+2025-10-26 21:53:09,382:INFO:   <<< warmup_proportion: 0.1
+2025-10-26 21:53:09,382:INFO:   <<< world_size: 0
+2025-10-26 21:53:09,382:INFO: device: cuda n_gpu: 1
+2025-10-26 21:53:09,382:INFO: loading archive file /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/bert-base
+2025-10-26 21:53:09,382:INFO: Model config {
+  "attention_probs_dropout_prob": 0.3,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.3,
+  "hidden_size": 896,
+  "initializer_range": 0.02,
+  "intermediate_size": 3584,
+  "max_position_embeddings": 500,
+  "num_attention_heads": 14,
+  "num_hidden_layers": 2,
+  "type_vocab_size": 2,
+  "vocab_size": 896
+}
+
+2025-10-26 21:53:09,382:INFO: Weight doesn't exsits. /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/bert-base/bert_pytorch_model.bin
+2025-10-26 21:53:09,382:INFO: loading archive file /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/visual-base
+2025-10-26 21:53:09,383:INFO: Model config {
+  "attention_probs_dropout_prob": 0.3,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.3,
+  "hidden_size": 896,
+  "initializer_range": 0.02,
+  "intermediate_size": 3584,
+  "max_position_embeddings": 1568,
+  "num_attention_heads": 14,
+  "num_hidden_layers": 1,
+  "type_vocab_size": 2,
+  "vocab_size": 896
+}
+
+2025-10-26 21:53:09,383:INFO: Weight doesn't exsits. /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/visual-base/visual_pytorch_model.bin
+2025-10-26 21:53:09,383:INFO: loading archive file /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/audio-base
+2025-10-26 21:53:09,383:INFO: Model config {
+  "attention_probs_dropout_prob": 0.3,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.3,
+  "hidden_size": 896,
+  "initializer_range": 0.02,
+  "intermediate_size": 3584,
+  "max_position_embeddings": 500,
+  "num_attention_heads": 14,
+  "num_hidden_layers": 1,
+  "type_vocab_size": 2,
+  "vocab_size": 896
+}
+
+2025-10-26 21:53:09,383:INFO: Weight doesn't exsits. /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/audio-base/audio_model.bin
+2025-10-26 21:53:09,383:INFO: loading archive file /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/cross-base
+2025-10-26 21:53:09,383:INFO: Model config {
+  "attention_probs_dropout_prob": 0.3,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.3,
+  "hidden_size": 896,
+  "initializer_range": 0.02,
+  "intermediate_size": 3584,
+  "max_position_embeddings": 2100,
+  "num_attention_heads": 14,
+  "num_hidden_layers": 2,
+  "type_vocab_size": 2,
+  "vocab_size": 896
+}
+
+2025-10-26 21:53:09,383:INFO: Weight doesn't exsits. /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/cross-base/cross_pytorch_model.bin
+2025-10-26 21:53:09,383:INFO: loading archive file /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/decoder-base
+2025-10-26 21:53:09,383:INFO: Model config {
+  "attention_probs_dropout_prob": 0.3,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.3,
+  "hidden_size": 896,
+  "initializer_range": 0.02,
+  "intermediate_size": 3584,
+  "max_position_embeddings": 1568,
+  "max_target_embeddings": 128,
+  "num_attention_heads": 14,
+  "num_decoder_layers": 1,
+  "num_hidden_layers": 1,
+  "type_vocab_size": 2,
+  "vocab_size": 896
+}
+
+2025-10-26 21:53:09,383:INFO: Weight doesn't exsits. /data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models/decoder-base/decoder_pytorch_model.bin
+2025-10-26 21:53:09,383:WARNING: Set bert_config.num_hidden_layers: 3.
+2025-10-26 21:53:09,383:WARNING: Set bert_config.vocab_size: 768.
+2025-10-26 21:53:09,605:WARNING: Set visual_config.num_hidden_layers: 3.
+2025-10-26 21:53:09,605:WARNING: Set visual_config.vocab_size: 896.
+2025-10-26 21:53:09,788:WARNING: Set audio_config.num_hidden_layers: 3.
+2025-10-26 21:53:09,874:WARNING: Set audio_config.vocab_size: 896.
+2025-10-26 21:53:11,261:WARNING: !!!!!!!!!!!!!! you start train unaligned dataset
+2025-10-26 21:59:03,852:INFO: Class priors: [0.5437992  0.2614009  0.22687007 0.10736548 0.17043963 0.10055774]
+2025-10-26 21:59:03,853:INFO: Pos weight: [1.        2.8255413 3.4078093 8.31398   4.8671803 8.944535 ]
+2025-10-26 21:59:05,599:INFO: ***** Running training *****
+2025-10-26 21:59:05,599:INFO:   Num examples = 12201
+2025-10-26 21:59:05,599:INFO:   Batch size = 32
+2025-10-26 21:59:05,599:INFO:   Num steps = 381
+2025-10-26 22:02:29,269:INFO: Epoch 1/1 Finished, Train Loss: 101.310724, Train_micro_f1: 0.439337, Train_micro_precision: 0.472094, Train_micro_recall: 0.410831,  Train_acc: 0.413800, train_gap: 0.385852
+2025-10-26 22:02:29,269:INFO: ***** Running testing *****
+2025-10-26 22:02:29,269:INFO:   Num examples = 3588
+2025-10-26 22:02:29,269:INFO:   Batch_size = 32
+2025-10-26 22:02:49,991:INFO: 预测分数分布: Min=0.0000, Max=0.9961, Mean=0.1660, Median=0.0000, Std=0.3712
+2025-10-26 22:02:52,260:INFO: 最佳阈值: 0.0100, Train_micro_f1: 0.4729, Train_micro_precision: 0.5582, Train_micro_recall: 0.4101, Train_acc: 0.4432
+2025-10-26 22:02:52,261:INFO: 提示: 最佳阈值较低，考虑提升置信度或增加正类权重。
+2025-10-26 22:02:52,277:INFO: 预测分数分布: Min=0.9961, Max=0.9961, Mean=0.9961, Median=0.9961, Std=0.0000
+2025-10-26 22:02:52,582:INFO: 最佳阈值: 0.8961, Train_micro_f1: 0.5582, Train_micro_precision: 0.5582, Train_micro_recall: 0.5582, Train_acc: 0.5582
+2025-10-26 22:02:52,582:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:02:52,891:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.7648, Train_micro_precision: 0.7648, Train_micro_recall: 0.7648, Train_acc: 0.0000
+2025-10-26 22:02:52,891:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:02:53,198:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.7907, Train_micro_precision: 0.7907, Train_micro_recall: 0.7907, Train_acc: 0.0000
+2025-10-26 22:02:53,198:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:02:53,501:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.9005, Train_micro_precision: 0.9005, Train_micro_recall: 0.9005, Train_acc: 0.0000
+2025-10-26 22:02:53,501:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:02:53,813:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.8473, Train_micro_precision: 0.8473, Train_micro_recall: 0.8473, Train_acc: 0.0000
+2025-10-26 22:02:53,814:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:02:54,161:INFO: 最佳阈值: 0.0100, Train_micro_f1: 0.8938, Train_micro_precision: 0.8938, Train_micro_recall: 0.8938, Train_acc: 0.0000
+2025-10-26 22:03:15,679:INFO: ----- micro_f1: 0.472852, micro_precision: 0.558250, micro_recall: 0.410115,  acc: 0.443200, test_gap: 0.397434, threshold: 0.009999999776482582
+2025-10-26 22:03:18,938:INFO: Model saved to .//cpkt_align/pytorch_model_0.bin
+2025-10-26 22:03:18,939:INFO: The best model is: .//cpkt_align/pytorch_model_0.bin, the f1 is: 0.4729
+2025-10-26 22:03:39,610:INFO: 预测分数分布: Min=0.0000, Max=0.9961, Mean=0.1660, Median=0.0000, Std=0.3712
+2025-10-26 22:03:41,685:INFO: 最佳阈值: 0.0100, Train_micro_f1: 0.4729, Train_micro_precision: 0.5582, Train_micro_recall: 0.4101, Train_acc: 0.4432
+2025-10-26 22:03:41,686:INFO: 提示: 最佳阈值较低，考虑提升置信度或增加正类权重。
+2025-10-26 22:03:41,686:INFO: 预测分数分布: Min=0.9961, Max=0.9961, Mean=0.9961, Median=0.9961, Std=0.0000
+2025-10-26 22:03:41,994:INFO: 最佳阈值: 0.8961, Train_micro_f1: 0.5582, Train_micro_precision: 0.5582, Train_micro_recall: 0.5582, Train_acc: 0.5582
+2025-10-26 22:03:41,994:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:03:42,299:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.7648, Train_micro_precision: 0.7648, Train_micro_recall: 0.7648, Train_acc: 0.0000
+2025-10-26 22:03:42,299:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:03:42,598:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.7907, Train_micro_precision: 0.7907, Train_micro_recall: 0.7907, Train_acc: 0.0000
+2025-10-26 22:03:42,598:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:03:42,895:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.9005, Train_micro_precision: 0.9005, Train_micro_recall: 0.9005, Train_acc: 0.0000
+2025-10-26 22:03:42,895:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:03:43,192:INFO: 最佳阈值: 0.0000, Train_micro_f1: 0.8473, Train_micro_precision: 0.8473, Train_micro_recall: 0.8473, Train_acc: 0.0000
+2025-10-26 22:03:43,192:INFO: 预测分数分布: Min=0.0000, Max=0.0000, Mean=0.0000, Median=0.0000, Std=0.0000
+2025-10-26 22:03:43,525:INFO: 最佳阈值: 0.0100, Train_micro_f1: 0.8938, Train_micro_precision: 0.8938, Train_micro_recall: 0.8938, Train_acc: 0.0000
+2025-10-26 22:03:43,542:INFO: Final test results: f1 0.472852,	p 0.558250,	r 0.410115,	acc 0.443200, threshold 0.009999999776482582

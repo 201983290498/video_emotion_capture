@@ -298,6 +298,12 @@ class TAILOR(TAILORPreTrainedModel):
             private_visual_modal_pred = self.modal_discriminator(private_visual).view(-1, 3)
             private_audio_modal_pred = self.modal_discriminator(private_audio).view(-1, 3)
 
+            # 安全BCE：清理与钳位到概率域并在FP32下计算
+            predict_scores = torch.nan_to_num(predict_scores, nan=0.0, posinf=1.0, neginf=0.0)
+            predict_scores = torch.clamp(predict_scores, 1e-7, 1 - 1e-7)
+            groundTruth_labels = torch.nan_to_num(groundTruth_labels, nan=0.0, posinf=1.0, neginf=0.0)
+            groundTruth_labels = torch.clamp(groundTruth_labels, 0.0, 1.0)
+
             # ==========> adversial Training
             common_text_modal_pred = self.modal_discriminator(GradReverse.grad_reverse(common_text, 1)).view(-1, 3)
             common_visual_modal_pred = self.modal_discriminator(GradReverse.grad_reverse(common_visual, 1)).view(-1, 3)
@@ -307,8 +313,14 @@ class TAILOR(TAILORPreTrainedModel):
             all_loss = 0.
             pooled_common = common_feature[:, 0] #[B, D]
             common_pred = self.common_classfier(pooled_common)
-            ml_loss = self.ml_loss(predict_scores, groundTruth_labels)
-            cml_loss = self.ml_loss(common_pred, groundTruth_labels)
+
+            # 钳位common_pred避免断言
+            common_pred = torch.nan_to_num(common_pred, nan=0.0, posinf=1.0, neginf=0.0)
+            common_pred = torch.clamp(common_pred, 1e-7, 1 - 1e-7)
+
+            with torch.cuda.amp.autocast(enabled=False):
+                ml_loss = self.ml_loss(predict_scores.float(), groundTruth_labels.float())
+                cml_loss = self.ml_loss(common_pred.float(), groundTruth_labels.float())
             preivate_diff_loss = self.calculate_orthogonality_loss(private_text, private_visual) + self.calculate_orthogonality_loss(private_text, private_audio) + self.calculate_orthogonality_loss(private_visual, private_audio)
             common_diff_loss = self.calculate_orthogonality_loss(common_text, private_text) + self.calculate_orthogonality_loss(common_visual, private_visual) + self.calculate_orthogonality_loss(common_audio, private_audio)
             adv_preivate_loss = self.adv_loss(private_text_modal_pred, text_modal) + self.adv_loss(private_visual_modal_pred, visual_modal) + self.adv_loss(private_audio_modal_pred, audio_modal)

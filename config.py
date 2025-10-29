@@ -65,7 +65,7 @@ class Config:
     # LDDU + HumanOmni 配置
     HUMANOMNI_MODEL_PATH = os.environ.get('HUMANOMNI_MODEL_PATH') or '/data/testmllm/models/R1-Omni-0.5B'
     LDDU_MODEL_DIR = os.environ.get('LDDU_MODEL_DIR') or '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/src/models'
-    LDDU_INIT_CHECKPOINT = os.environ.get('LDDU_INIT_CHECKPOINT') or '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/cpkt_align/pytorch_model_19.bin'
+    LDDU_INIT_CHECKPOINT = os.environ.get('LDDU_INIT_CHECKPOINT') or '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/cpkt_align/pytorch_model_7.bin.'
     EMOTION_LABELS = ['Happy', 'Sad', 'Anger', 'Surprise', 'Disgust', 'Fear']
     
     # 聊天配置

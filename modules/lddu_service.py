@@ -44,6 +44,12 @@ class LDDUService:
             self.is_loaded = False
             return False
 
+        # 如果已加载，直接复用当前实例，避免重复初始化
+        if self.is_loaded and self.inference is not None:
+            if emotion_labels:
+                self.emotion_labels = emotion_labels
+            return True
+
         try:
             cfg = create_lddu_config()
             if emotion_labels:
@@ -59,6 +65,12 @@ class LDDUService:
                 device=self.device,
                 init_model_path=init_model_path
             )
+            # 进程初始化阶段预加载特征提取中间件模型（HumanOmni/BERT）
+            try:
+                self.inference.ensure_feature_models()
+            except Exception:
+                # 预加载失败不阻塞主模型加载，可在首次推理时再加载
+                pass
             self.is_loaded = True
             self.model_info = {
                 'humanomni_model_path': humanomni_model_path,

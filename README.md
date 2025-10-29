@@ -69,13 +69,16 @@ OPENAI_API_KEY=your-api-key-here
 OPENAI_API_BASE=https://api.openai.com/v1
 OPENAI_MODEL=gpt-3.5-turbo
 
-# 本地模型配置（可选）
-QWEN_MODEL_PATH=/path/to/Qwen3-Omni-30B-A3B-Instruct
+# LDDU + HumanOmni 配置（必需）
+HUMANOMNI_MODEL_PATH=/path/to/HumanOmni
+LDDU_MODEL_DIR=/path/to/lddu_model_dir
+LDDU_INIT_CHECKPOINT=/path/to/lddu_init_checkpoint.bin
+INFERENCE_LOG_FILE=logs/inference_speed.ndjson
 
 # Flask/服务配置
 SECRET_KEY=your-secret-key-here
 FLASK_ENV=development
-PORT=5000
+PORT=5001
 ```
 
 ### 4. 启动应用
@@ -111,8 +114,7 @@ video_capture/
 ├── config.py              # 配置项
 ├── modules/               # 业务模块
 │   ├── openai_client.py   # Chat API 客户端
-│   ├── qwen_omni.py       # 本地模型推理器
-│   ├── qwen_service.py    # 模型服务（单例）
+│   ├── lddu_service.py    # LDDU 模型服务（单例）
 │   ├── realtime_manager.py# 实时管线协调
 │   ├── video_processor.py # 视频合成与任务队列
 │   └── video_queue.py     # 会话队列与状态
@@ -135,9 +137,7 @@ video_capture/
 - `POST /api/chat/clear`：清除聊天历史
 - `GET /api/chat/history`：查询聊天历史
 - `GET /status`：系统/会话状态
-- `GET /api/qwen/status`：Qwen 模型服务状态
-- `POST /api/qwen/analyze`：视频情感分析（Qwen路径）
-- `POST /api/lddu/analyze`：视频情感分析（LDDU路径，优先使用）
+- `GET /api/inference/stats`：推理时间统计（LDDU）
 
 ### SocketIO 事件
 - `connect` / `disconnect`
@@ -150,7 +150,7 @@ video_capture/
 ### 情感识别流程
 1. 前端每 ~100ms 发送一帧 JPEG（DataURL）与音频数据到后端（`video_frame`/`audio_chunk`）。
 2. 后端 `VideoQueue` 缓存最近 10 秒数据，`RealtimeManager` 每秒取最近 5 秒提交 `VideoProcessor` 合成短视频（保存到 `videos/`）。
-3. 合成完成后触发情感分析：优先调用 `LDDUService.analyze_video_emotion`，若不可用则回退到 `QwenService.analyze_video_emotion`。
+3. 合成完成后触发情感分析：调用 `LDDUService.analyze_video_emotion`（仅 LDDU）。
 4. 后端通过 `emotion_callbacks` 将统一载荷推到前端房间：`{ emotion: '<标签>', video_name: '实时分析', timestamp: <ts> }`。
 5. 前端 `initializeSocket` 监听 `emotion_result`，使用 `displayEmotionResult` 渲染：标题为“实时分析”，正文仅显示情感标签（不含置信度）。
 

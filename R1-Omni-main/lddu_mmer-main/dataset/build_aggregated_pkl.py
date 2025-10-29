@@ -109,9 +109,9 @@ def collect_video_files(videos_root: str):
 
 def main():
     parser = argparse.ArgumentParser(description='聚合三模态特征与标签，生成用于训练的 pkl')
-    parser.add_argument('--videos_root', type=str, default=os.path.join(ROOT_DIR, 'lddu_mmer-main/dataset/dataset1/Raw5'), help='原始视频根目录')
+    parser.add_argument('--videos_root', type=str, default=os.path.join(ROOT_DIR, 'lddu_mmer-main/dataset/dataset1/Raw1'), help='原始视频根目录')
     parser.add_argument('--label_csv', type=str, default=os.path.join(ROOT_DIR, 'lddu_mmer-main/dataset/dataset1/label.csv'), help='标签 CSV 路径')
-    parser.add_argument('--output_pkl', type=str, default=os.path.join(ROOT_DIR, 'lddu_mmer-main/dataset/dataset1/aggregated_features_3.pkl'), help='输出 pkl 路径')
+    parser.add_argument('--output_pkl', type=str, default=os.path.join(ROOT_DIR, 'lddu_mmer-main/dataset/dataset1/aggregated_features_4.pkl'), help='输出 pkl 路径')
     parser.add_argument('--model_path', type=str, default=os.path.join('/data/testmllm/models', 'R1-Omni-0.5B'), help='HumanOmni 模型目录（包含vision_tower、audio_tower等）')
     parser.add_argument('--device', type=str, default=('cuda' if os.environ.get('CUDA_VISIBLE_DEVICES', '') != '' else ('cuda' if __import__('torch').cuda.is_available() else 'cpu')), help='设备：cuda 或 cpu')
     parser.add_argument('--batch_size', type=int, default=8, help='批处理大小（用于批量提取特征）')

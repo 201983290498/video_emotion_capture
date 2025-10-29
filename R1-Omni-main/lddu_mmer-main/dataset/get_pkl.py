@@ -4,7 +4,7 @@ import os
 import joblib
 import numpy as np
 
-file_path = '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/aggregated_features.pkl'
+file_path = '/data/testmllm/project/video_capture/R1-Omni-main/lddu_mmer-main/dataset/dataset1/all_aggregated_features.pkl'
 
 print(f"正在读取文件: {file_path}")
 

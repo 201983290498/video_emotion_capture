@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 import time
 from config import Config
-from modules import RealtimeManager, get_openai_client, initialize_openai_client, get_qwen_service
+from modules import RealtimeManager, get_openai_client, initialize_openai_client
 from modules import get_lddu_service
 
 # 配置日志
@@ -66,7 +66,6 @@ def init_realtime_manager():
         logger.info("LDDU Service 初始化成功")
     else:
         logger.error(f"LDDU Service 初始化失败: {lddu_service.load_error}")
-
 
 @app.route('/')
 def index():
@@ -228,53 +227,6 @@ def get_status():
         logger.error(f"获取状态失败: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/qwen/status')
-def get_qwen_status():
-    """获取Qwen模型服务状态 返回模型服务状态"""
-    try:
-        qwen_service = get_qwen_service()
-        status = qwen_service.get_status()
-        return jsonify(status)
-    except Exception as e:
-        logger.error(f"获取Qwen服务状态失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/qwen/analyze', methods=['POST'])
-def analyze_video_emotion():
-    """分析视频情感"""
-    try:
-        data = request.get_json()
-        video_path = data.get('video_path')
-        
-        if not video_path:
-            return jsonify({'error': '缺少video_path参数'}), 400
-        
-        # 检查文件是否存在
-        if not os.path.exists(video_path):
-            return jsonify({'error': f'视频文件不存在: {video_path}'}), 404
-        
-        qwen_service = get_qwen_service()
-        
-        # 检查模型是否准备就绪
-        if not qwen_service.is_model_ready():
-            return jsonify({
-                'error': 'Qwen模型服务未准备就绪',
-                'service_status': qwen_service.get_status()
-            }), 503
-        
-        # 执行情感分析   调用了自身，有问题！！
-        result = qwen_service.analyze_video_emotion(
-            video_path=video_path,
-            audio_path=data.get('audio_path'),
-            prompt=data.get('prompt')
-        )
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"视频情感分析失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
 # SocketIO事件处理
 @socketio.on('connect')
 def handle_connect():
@@ -339,7 +291,29 @@ def handle_video_frame(data):
             # 移除data URL前缀
             if isinstance(frame_data, str) and frame_data.startswith('data:image'):
                 frame_data = frame_data.split(',')[1]
-            realtime_manager.add_video_frame(session_id, frame_data)
+            # 清理空白并补齐填充，避免后端解码失败
+            img_bytes = None
+            if isinstance(frame_data, str):
+                import base64
+                s = frame_data.strip().replace('\n', '').replace('\r', '')
+                missing_padding = (-len(s)) % 4
+                if missing_padding:
+                    s += '=' * missing_padding
+                try:
+                    img_bytes = base64.b64decode(s, validate=False)
+                except Exception:
+                    try:
+                        img_bytes = base64.urlsafe_b64decode(s)
+                    except Exception as e:
+                        logger.warning(f"视频帧base64解码失败，丢弃该帧: {e}")
+                        img_bytes = None
+            elif isinstance(frame_data, (bytes, bytearray)):
+                img_bytes = bytes(frame_data)
+            else:
+                img_bytes = None
+
+            if img_bytes:
+                realtime_manager.add_video_frame(session_id, img_bytes)
             # 返回ACK，携带服务器时间戳与队列状态
             status = realtime_manager.get_session_status(session_id) if realtime_manager else {}
             emit('video_frame_ack', {
@@ -362,9 +336,30 @@ def handle_audio_chunk(data):
         client_ts = data.get('client_ts')
         
         if audio_data and realtime_manager:
-            if isinstance(audio_data, str) and audio_data.startswith('data:audio'):
-                audio_data = audio_data.split(',')[1]
-            realtime_manager.add_audio_chunk(session_id, audio_data)
+            # 支持 DataURL 与纯 base64 两种形式，统一解码为字节
+            decoded_bytes = None
+            try:
+                if isinstance(audio_data, str):
+                    # 去掉可能的 data:audio 前缀
+                    if audio_data.startswith('data:audio'):
+                        audio_data = audio_data.split(',')[1]
+                    # 清理空白并补齐填充
+                    s = audio_data.strip().replace('\n', '').replace('\r', '')
+                    missing_padding = (-len(s)) % 4
+                    if missing_padding:
+                        s += '=' * missing_padding
+                    try:
+                        decoded_bytes = base64.b64decode(s, validate=False)
+                    except Exception:
+                        decoded_bytes = base64.urlsafe_b64decode(s)
+                elif isinstance(audio_data, (bytes, bytearray)):
+                    decoded_bytes = bytes(audio_data)
+            except Exception as e:
+                logger.warning(f"音频块base64解码失败，丢弃该块: {e}")
+                decoded_bytes = None
+
+            if decoded_bytes:
+                realtime_manager.add_audio_chunk(session_id, decoded_bytes)
             status = realtime_manager.get_session_status(session_id) if realtime_manager else {}
             emit('audio_chunk_ack', {
                 'session_id': session_id,

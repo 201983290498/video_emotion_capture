@@ -7,11 +7,11 @@ import threading
 import logging
 import statistics
 import json
+import os
 from collections import deque
 from typing import Dict, Any, Optional, Callable
 from .video_queue import VideoQueueManager
 from .video_processor import VideoProcessor
-from .qwen_service import get_qwen_service
 from .lddu_service import get_lddu_service
 
 logger = logging.getLogger(__name__)
@@ -34,58 +34,21 @@ class RealtimeManager:
             frame_rate=config.get('frame_rate', 10)
         )
         
-        # 获取Qwen模型服务
-        self.qwen_service = get_qwen_service()
-        
-        # 获取 LDDU 服务
+        # 获取 LDDU 服务（不在此处加载模型，避免重复初始化）
         self.lddu_service = get_lddu_service()
-        self.lddu_ready = False
-        
-        # 初始化本地Qwen模型
-        model_path = config.get('qwen_model_path')
-        if model_path:
-            try:
-                success = self.qwen_service.load_model(
-                    model_path=model_path,
-                    max_gpus=config.get('max_gpus', 4)
-                )
-                if success:
-                    logger.info("本地Qwen3-Omni模型服务初始化成功")
-                else:
-                    logger.error("本地Qwen3-Omni模型服务初始化失败")
-            except Exception as e:
-                logger.error(f"本地模型服务初始化失败: {e}")
-        else:
-            logger.warning("未配置本地模型路径")
-        
-        # 初始化 LDDU 服务
-        try:
-            self.lddu_ready = self.lddu_service.load_model(
-                humanomni_model_path=config.get('humanomni_model_path'),
-                model_dir=config.get('lddu_model_dir'),
-                init_model_path=config.get('lddu_init_checkpoint'),
-                emotion_labels=config.get('emotion_labels')
-            )
-            if self.lddu_ready:
-                logger.info("LDDU Service 初始化成功")
-            else:
-                logger.error(f"LDDU Service 初始化失败: {self.lddu_service.load_error}")
-        except Exception as e:
-            logger.error(f"LDDU Service 初始化异常: {e}")
+        self.lddu_ready = getattr(self.lddu_service, 'is_loaded', False)
         
         # 实时处理控制
         self.processing_threads: Dict[str, threading.Thread] = {}
         self.processing_flags: Dict[str, bool] = {}
         self.emotion_callbacks: Dict[str, Callable] = {}
         
-        # 推理时间统计 (保留最近100次记录)
+        # 推理时间统计 (保留最近100次记录，仅 LDDU)
         self.inference_times = {
-            'lddu': deque(maxlen=100),
-            'qwen': deque(maxlen=100)
+            'lddu': deque(maxlen=100)
         }
         self.inference_stats = {
-            'lddu': {'count': 0, 'total_time': 0, 'avg_time': 0, 'min_time': float('inf'), 'max_time': 0},
-            'qwen': {'count': 0, 'total_time': 0, 'avg_time': 0, 'min_time': float('inf'), 'max_time': 0}
+            'lddu': {'count': 0, 'total_time': 0, 'avg_time': 0, 'min_time': float('inf'), 'max_time': 0}
         }
         self.stats_lock = threading.Lock()
         # 推理日志文件路径与写入锁
@@ -142,7 +105,7 @@ class RealtimeManager:
         """获取推理时间统计"""
         with self.stats_lock:
             stats = {}
-            for model_type in ['lddu', 'qwen']:
+            for model_type in ['lddu']:
                 recent_times = list(self.inference_times[model_type])
                 model_stats = self.inference_stats[model_type].copy()
                 
@@ -167,15 +130,14 @@ class RealtimeManager:
             self.processing_flags[session_id] = False
         
         # 等待线程结束
-        if session_id in self.processing_threads:
-            thread = self.processing_threads[session_id]
+        thread = self.processing_threads.get(session_id)
+        if thread:
             if thread.is_alive():
                 thread.join(timeout=5)
-            del self.processing_threads[session_id]
+            self.processing_threads.pop(session_id, None)
         
         # 清理回调
-        if session_id in self.emotion_callbacks:
-            del self.emotion_callbacks[session_id]
+        self.emotion_callbacks.pop(session_id, None)
         
         logger.info(f"停止实时处理: session_id={session_id}")
     
@@ -225,57 +187,13 @@ class RealtimeManager:
         if not video_path:
             return
         
-        # 进行情感分析，优先使用 LDDU
+        # 进行情感分析，仅使用 LDDU
         if self.lddu_service and self.lddu_service.is_loaded:
             self._analyze_emotion_async_lddu(session_id, video_path)
-        elif self.qwen_service.is_model_ready():
-            self._analyze_emotion_async(session_id, video_path)
         else:
-            logger.warning("没有可用的情感分析服务，跳过")
+            logger.warning("LDDU 未就绪，跳过情感分析")
     
-    def _analyze_emotion_async(self, session_id: str, video_path: str):
-        """异步情感分析(Qwen)"""
-        def analyze():
-            try:
-                # 记录开始时间
-                start_time = time.time()
-                
-                result = self.qwen_service.analyze_video_emotion(video_path)
-                
-                # 记录结束时间并更新统计
-                end_time = time.time()
-                inference_time = end_time - start_time
-                self._update_inference_stats('qwen', inference_time)
-                
-                logger.info(f"Qwen情感分析耗时: {inference_time:.3f}s")
-                
-                # 调用回调函数，简化返回结构
-                callback = self.emotion_callbacks.get(session_id)
-                if callback:
-                    # 提取情感结果，统一格式
-                    emotion_text = "未检测到情感"
-                    if result and isinstance(result, dict):
-                        if result.get('emotion'):
-                            emotion_text = result['emotion']
-                        elif result.get('analysis'):
-                            emotion_text = result['analysis']
-                    elif isinstance(result, str):
-                        emotion_text = result
-                    
-                    callback({
-                        'emotion': emotion_text,
-                        'timestamp': time.time(),
-                        'video_name': "实时分析",
-                        'inference_time': inference_time,
-                        'model_type': 'qwen'
-                    })
-                
-            except Exception as e:
-                logger.error(f"情感分析失败: {e}")
-        
-        # 在新线程中执行情感分析
-        thread = threading.Thread(target=analyze, daemon=True)
-        thread.start()
+    # Qwen 情感识别路径已移除
     
     def _analyze_emotion_async_lddu(self, session_id: str, video_path: str):
         """异步情感分析(LDDU)"""
@@ -292,7 +210,21 @@ class RealtimeManager:
                 inference_time = end_time - start_time
                 self._update_inference_stats('lddu', inference_time)
                 
-                logger.info(f"LDDU情感分析耗时: {inference_time:.3f}s")
+                # 输出耗时同时包含视频编号/文件名
+                video_basename = os.path.basename(video_path) if video_path else "unknown"
+                video_id = None
+                try:
+                    name_no_ext = os.path.splitext(video_basename)[0]
+                    parts = name_no_ext.split('_')
+                    # 约定文件名: video_<session_id>_<timestamp>.mp4
+                    if len(parts) >= 3:
+                        video_id = parts[-1]
+                except Exception:
+                    pass
+                if video_id:
+                    logger.info(f"LDDU情感分析耗时: {inference_time:.3f}s | video_id={video_id} | file={video_basename}")
+                else:
+                    logger.info(f"LDDU情感分析耗时: {inference_time:.3f}s | file={video_basename}")
                 
                 callback = self.emotion_callbacks.get(session_id)
                 if callback:
@@ -361,9 +293,13 @@ class RealtimeManager:
     
     def shutdown(self):
         """关闭管理器"""
-        # 停止所有实时处理
-        for session_id in list(self.processing_flags.keys()):
-            self.stop_realtime_processing(session_id)
+        # 停止所有实时处理（并集确保不遗漏）
+        sessions = set(self.processing_flags.keys()) | set(self.processing_threads.keys()) | set(self.emotion_callbacks.keys()) | set(self.queue_manager.get_all_queues_info().keys())
+        for session_id in list(sessions):
+            try:
+                self.stop_realtime_processing(session_id)
+            except Exception as e:
+                logger.warning(f"停止会话失败 {session_id}: {e}")
         
         # 停止视频处理器
         self.video_processor.stop_worker()

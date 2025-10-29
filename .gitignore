@@ -1,7 +1,42 @@
+
+
+# 视频文件
 *.mp4
+*.avi
+*.mov
+
+# Python 编译文件
 *.pyc
+__pycache__/
+
+# 环境文件
 .env
 .env.example
+
+# 数据文件
 *.csv
 *.pkl
+
+# 数据集
 dataset/dataset1
+
+# 模型文件
+*.bin
+*.pth
+*.ckpt
+*.h5
+*.model
+
+# 临时文件夹
+cpkt_align/
+R1-Omni-main/lddu_mmer-main/cpkt_align_tmp/
+
+# 日志文件
+*.log
+log.txt
+
+# 删除的文件（记录）
+modules/qwen_omni.py
+modules/qwen_service.py
+test_emotion_speed.py
+test_video_emotion.py
